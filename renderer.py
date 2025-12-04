@@ -1,0 +1,222 @@
+from Xlib import X
+import hashlib
+from PIL import Image
+import sys # Added for error printing
+
+class Renderer:
+    def __init__(self, root, display, config):
+        self.root = root
+        self.display = display
+        self.screen = display.screen()
+        self.colormap = self.screen.default_colormap
+        
+        # Get the actual depth of the screen
+        self.depth = self.screen.root_depth
+        
+        self.config = config
+        self.color_cache = {}
+        
+        # --- WALLPAPER STATE ---
+        self.bg_pixmap = None     
+        self.bg_width = 0         
+        self.bg_height = 0        
+
+        # --- Font & GC ---
+        try:
+            self.font = self.display.open_font('fixed')
+        except:
+            self.font = None
+
+        gc_args = {
+            'foreground': self.alloc_color('black'),
+            'background': self.alloc_color('white')
+        }
+        if self.font: gc_args['font'] = self.font.id 
+        self.gc = self.root.create_gc(**gc_args)
+        
+        # Load and Setup the Static Wallpaper
+        self._setup_static_wallpaper()
+
+    def alloc_color(self, name):
+        try: return self.colormap.alloc_named_color(name).pixel
+        except: return self.display.screen().white_pixel
+
+    def get_pixel(self, r, g, b):
+        r = max(0, min(65535, int(r)))
+        g = max(0, min(65535, int(g)))
+        b = max(0, min(65535, int(b)))
+        
+        key = (r, g, b)
+        if key in self.color_cache: return self.color_cache[key]
+        
+        try:
+            color = self.colormap.alloc_color(r, g, b)
+            self.color_cache[key] = color.pixel
+            return color.pixel
+        except:
+            return self.display.screen().white_pixel
+
+    def _setup_static_wallpaper(self):
+        path = self.config.get("wallpaper_path", "")
+        if not path: return
+
+        try:
+            # 1. Load Image
+            img = Image.open(path).convert("RGB")
+            
+            # 2. Get Screen Dimensions
+            geom = self.root.get_geometry()
+            scr_w = geom.width
+            scr_h = geom.height
+            
+            print(f"Loading Wallpaper: {path}")
+            print(f"Scaling to Screen: {scr_w}x{scr_h}")
+
+            # 3. Resize to Fit Screen (High Quality)
+            resized = img.resize((scr_w, scr_h), Image.LANCZOS)
+            
+            # 4. Prepare Data
+            try:
+                # Try 32-bit padding first (Standard for X11)
+                data = resized.tobytes("raw", "BGRX")
+                bpp = 4
+            except:
+                data = resized.tobytes("raw", "RGB")
+                bpp = 3
+
+            # 5. Create Pixmap
+            self.bg_pixmap = self.root.create_pixmap(scr_w, scr_h, self.depth)
+            bg_gc = self.bg_pixmap.create_gc()
+            
+            # 6. Chunked Upload
+            bytes_per_row = scr_w * bpp
+            max_chunk_bytes = 200000 
+            
+            rows_per_chunk = max_chunk_bytes // bytes_per_row
+            if rows_per_chunk < 1: rows_per_chunk = 1
+            
+            total_rows = scr_h
+            current_row = 0
+            
+            while current_row < total_rows:
+                chunk_h = min(rows_per_chunk, total_rows - current_row)
+                start_byte = current_row * bytes_per_row
+                end_byte = start_byte + (chunk_h * bytes_per_row)
+                chunk_data = data[start_byte:end_byte]
+                
+                self.bg_pixmap.put_image(
+                    bg_gc, 
+                    0, current_row,    # x, y
+                    scr_w, chunk_h,    # width, height
+                    X.ZPixmap, 
+                    self.depth, 
+                    0, 
+                    chunk_data
+                )
+                current_row += chunk_h
+
+            self.bg_width = scr_w
+            self.bg_height = scr_h
+            print("Wallpaper uploaded successfully.")
+            
+            # --- FIX: Set Root Background ---
+            # This tells X11 to use this pixmap as the permanent background.
+            # Even if our manual drawing fails, X11 might handle this correctly.
+            self.root.change_attributes(background_pixmap=self.bg_pixmap)
+            self.root.clear_area()
+            self.display.flush()
+            
+        except Exception as e:
+            print(f"Wallpaper Setup Error: {e}")
+            self.bg_pixmap = None
+
+    def draw_wallpaper(self, camera):
+        """
+        Copies the static pixmap to the root window.
+        """
+        if self.bg_pixmap:
+            try:
+                # Method 1: Fast Copy (Double Buffering simulation)
+                self.bg_pixmap.copy_area(
+                    self.gc, 
+                    0, 0, 
+                    self.bg_width, self.bg_height, 
+                    self.root, 
+                    0, 0
+                )
+            except Exception as e:
+                # PRINT THE ACTUAL ERROR
+                print(f"DRAW ERROR: {e}")
+                
+                # Method 2: Fallback to Clear (Relies on background_pixmap set in setup)
+                # If copy_area fails, we ask X11 to repaint the background
+                try:
+                    self.root.clear_area(0, 0, self.bg_width, self.bg_height, False)
+                except:
+                    pass
+        else:
+            self.root.clear_area()
+
+    def create_theme(self, app_name):
+        if not app_name: app_name = "unknown"
+        hash_bytes = hashlib.md5(app_name.encode('utf-8')).digest()
+        r_base = (hash_bytes[0] % 150) + 50
+        g_base = (hash_bytes[1] % 150) + 50
+        b_base = (hash_bytes[2] % 150) + 50
+        r16 = r_base * 257
+        g16 = g_base * 257
+        b16 = b_base * 257
+        full_pixel = self.get_pixel(r16 * 1.3, g16 * 1.3, b16 * 1.3)
+        bar_pixel = self.get_pixel(r16, g16, b16)
+        close_pixel = self.get_pixel(r16 * 0.6, g16 * 0.6, b16 * 0.6)
+        return {'bar': bar_pixel, 'full': full_pixel, 'close': close_pixel}
+
+    def render_cmd_bar(self, bar_window, text, screen_w, screen_h):
+        bar_window.clear_area()
+        try:
+            bar_window.draw_text(self.gc, 10, 25, text.encode('utf-8'))
+        except: pass
+
+    def project(self, camera, wx, wy, ww, wh):
+        screen = self.root.get_geometry()
+        half_w = screen.width // 2
+        half_h = screen.height // 2
+        sx = int((wx - camera.x) * camera.zoom + half_w)
+        sy = int((wy - camera.y) * camera.zoom + half_h)
+        sw = int(ww * camera.zoom)
+        sh = int(wh * camera.zoom)
+        sw = max(5, min(sw, 30000))
+        sh = max(5, min(sh, 30000))
+        return sx, sy, sw, sh
+
+    def render_world(self, camera, windows):
+        # 1. DRAW STATIC WALLPAPER
+        self.draw_wallpaper(camera)
+
+        # 2. Draw Windows
+        show_content = camera.zoom > 0.5
+        scaled_title = int(25 * camera.zoom)
+        if scaled_title < 10: scaled_title = 10 
+
+        for win in windows.values():
+            sx, sy, sw, sh = self.project(
+                camera, win.world_x, win.world_y, win.world_w, win.world_h
+            )
+            win.frame.configure(x=sx, y=sy, width=sw, height=sh)
+            win.btn_close.configure(x=sw - scaled_title, y=0, width=scaled_title, height=scaled_title)
+            win.btn_full.configure(x=sw - (scaled_title * 2), y=0, width=scaled_title, height=scaled_title)
+
+            text_area_w = sw - (scaled_title * 2)
+            if text_area_w > 0:
+                win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)
+                if show_content:
+                    text_y = int(scaled_title * 0.7)
+                    try:
+                        win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))
+                    except: pass
+            
+            if show_content:
+                win.client.map()
+                win.client.configure(width=sw, height=sh - scaled_title, y=scaled_title)
+            else:
+                win.client.unmap()
