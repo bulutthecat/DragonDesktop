@@ -1,7 +1,7 @@
 from Xlib import X
 import hashlib
 from PIL import Image
-import sys # Added for error printing
+import sys 
 
 class Renderer:
     def __init__(self, root, display, config):
@@ -9,19 +9,14 @@ class Renderer:
         self.display = display
         self.screen = display.screen()
         self.colormap = self.screen.default_colormap
-        
-        # Get the actual depth of the screen
         self.depth = self.screen.root_depth
-        
         self.config = config
         self.color_cache = {}
         
-        # --- WALLPAPER STATE ---
         self.bg_pixmap = None     
         self.bg_width = 0         
         self.bg_height = 0        
 
-        # --- Font & GC ---
         try:
             self.font = self.display.open_font('fixed')
         except:
@@ -34,7 +29,6 @@ class Renderer:
         if self.font: gc_args['font'] = self.font.id 
         self.gc = self.root.create_gc(**gc_args)
         
-        # Load and Setup the Static Wallpaper
         self._setup_static_wallpaper()
 
     def alloc_color(self, name):
@@ -61,99 +55,80 @@ class Renderer:
         if not path: return
 
         try:
-            # 1. Load Image
             img = Image.open(path).convert("RGB")
-            
-            # 2. Get Screen Dimensions
             geom = self.root.get_geometry()
             scr_w = geom.width
             scr_h = geom.height
             
             print(f"Loading Wallpaper: {path}")
-            print(f"Scaling to Screen: {scr_w}x{scr_h}")
-
-            # 3. Resize to Fit Screen (High Quality)
             resized = img.resize((scr_w, scr_h), Image.LANCZOS)
             
-            # 4. Prepare Data
+            # X11 usually expects 32-bit padded data (BGRX) even for 24-bit depth
             try:
-                # Try 32-bit padding first (Standard for X11)
                 data = resized.tobytes("raw", "BGRX")
-                bpp = 4
+                bpp = 4 # Bytes per pixel
             except:
                 data = resized.tobytes("raw", "RGB")
                 bpp = 3
 
-            # 5. Create Pixmap
             self.bg_pixmap = self.root.create_pixmap(scr_w, scr_h, self.depth)
             bg_gc = self.bg_pixmap.create_gc()
             
-            # 6. Chunked Upload
+            # --- FIX: CHUNKED UPLOAD ---
+            # X11 Request Size Limit is ~262KB. We must split the image.
             bytes_per_row = scr_w * bpp
-            max_chunk_bytes = 200000 
             
-            rows_per_chunk = max_chunk_bytes // bytes_per_row
+            # Calculate max rows we can send in one packet (target 200KB to be safe)
+            max_packet_size = 200000 
+            rows_per_chunk = max_packet_size // bytes_per_row
             if rows_per_chunk < 1: rows_per_chunk = 1
             
             total_rows = scr_h
             current_row = 0
             
+            # Slice the data byte-array and upload in parts
             while current_row < total_rows:
                 chunk_h = min(rows_per_chunk, total_rows - current_row)
+                
                 start_byte = current_row * bytes_per_row
                 end_byte = start_byte + (chunk_h * bytes_per_row)
+                
                 chunk_data = data[start_byte:end_byte]
                 
                 self.bg_pixmap.put_image(
                     bg_gc, 
-                    0, current_row,    # x, y
-                    scr_w, chunk_h,    # width, height
+                    0, current_row,   # x, y
+                    scr_w, chunk_h,   # width, height
                     X.ZPixmap, 
                     self.depth, 
-                    0, 
+                    0,                # left_pad
                     chunk_data
                 )
                 current_row += chunk_h
 
             self.bg_width = scr_w
             self.bg_height = scr_h
-            print("Wallpaper uploaded successfully.")
             
-            # --- FIX: Set Root Background ---
-            # This tells X11 to use this pixmap as the permanent background.
-            # Even if our manual drawing fails, X11 might handle this correctly.
             self.root.change_attributes(background_pixmap=self.bg_pixmap)
             self.root.clear_area()
             self.display.flush()
+            print("Wallpaper loaded successfully.")
             
         except Exception as e:
             print(f"Wallpaper Setup Error: {e}")
             self.bg_pixmap = None
 
     def draw_wallpaper(self, camera):
-        """
-        Copies the static pixmap to the root window.
-        """
         if self.bg_pixmap:
             try:
-                # Method 1: Fast Copy (Double Buffering simulation)
                 self.bg_pixmap.copy_area(
-                    self.gc, 
-                    0, 0, 
-                    self.bg_width, self.bg_height, 
-                    self.root, 
-                    0, 0
+                    self.gc, 0, 0, self.bg_width, self.bg_height, 
+                    self.root, 0, 0
                 )
-            except Exception as e:
-                # PRINT THE ACTUAL ERROR
-                print(f"DRAW ERROR: {e}")
-                
-                # Method 2: Fallback to Clear (Relies on background_pixmap set in setup)
-                # If copy_area fails, we ask X11 to repaint the background
+            except:
                 try:
                     self.root.clear_area(0, 0, self.bg_width, self.bg_height, False)
-                except:
-                    pass
+                except: pass
         else:
             self.root.clear_area()
 
@@ -190,51 +165,34 @@ class Renderer:
         return sx, sy, sw, sh
 
     def render_world(self, camera, windows):
-        # 1. DRAW STATIC WALLPAPER
         self.draw_wallpaper(camera)
-
-        # 2. Draw Windows
-        # Only draw content if we aren't zoomed out too far
         show_content = camera.zoom > 0.5
 
         for win in windows.values():
-            
-            # --- FIX 1: HIDE TITLE BAR IF FULLSCREEN ---
-            # If fullscreen, title bar height is 0. Otherwise, it scales with zoom.
             if win.is_fullscreen:
                 scaled_title = 0
             else:
                 scaled_title = int(25 * camera.zoom)
                 if scaled_title < 10: scaled_title = 10 
 
-            # Project World Coords -> Screen Coords
             sx, sy, sw, sh = self.project(
                 camera, win.world_x, win.world_y, win.world_w, win.world_h
             )
 
-            # --- FIX 2: STRICT SIZING FOR FIXED APPS (WINE) ---
-            # If the app is "fixed size" (min == max), we must IGNORE the world geometry calculations
-            # regarding aspect ratio and FORCE the frame to match the client's requested size exactly.
-            
             is_fixed_size = (win.min_w == win.max_w) and (win.min_w > 0)
             
             if is_fixed_size and not win.is_fullscreen:
-                # Force frame width to match the app's fixed width * zoom
                 sw = int(win.min_w * camera.zoom)
-                # Force frame height to match app's height * zoom + title bar
                 sh = int(win.min_h * camera.zoom) + scaled_title
 
-            # Configure the Frame
             win.frame.configure(x=sx, y=sy, width=sw, height=sh)
 
-            # Handle Buttons (Hide them if title bar is 0)
             if scaled_title > 0:
                 win.btn_close.map()
                 win.btn_full.map()
                 win.btn_close.configure(x=sw - scaled_title, y=0, width=scaled_title, height=scaled_title)
                 win.btn_full.configure(x=sw - (scaled_title * 2), y=0, width=scaled_title, height=scaled_title)
                 
-                # Draw Title Text
                 text_area_w = sw - (scaled_title * 2)
                 if text_area_w > 0:
                     win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)
@@ -244,41 +202,21 @@ class Renderer:
                             win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))
                         except: pass
             else:
-                # Hide buttons in fullscreen/no-title mode
                 win.btn_close.unmap()
                 win.btn_full.unmap()
 
-            # Handle Client Content
             if show_content:
                 win.client.map()
-                
-                # Available space for the app inside the frame
                 avail_w = sw
                 avail_h = sh - scaled_title
-                
-                # Apply Size Constraints (Min/Max)
                 scaled_min_w = int(win.min_w * camera.zoom)
                 scaled_min_h = int(win.min_h * camera.zoom)
+                final_w = max(avail_w, scaled_min_w)
+                final_h = max(avail_h, scaled_min_h)
                 
-                final_w = avail_w
-                final_h = avail_h
-                
-                # Clamp Width
-                if final_w < scaled_min_w: final_w = scaled_min_w
-                # Clamp Height
-                if final_h < scaled_min_h: final_h = scaled_min_h
-                
-                # Center the Client (Letterboxing)
-                # If we are in "Strict Mode", off_x/off_y will be 0 naturally.
                 off_x = (avail_w - final_w) // 2
                 off_y = scaled_title + (avail_h - final_h) // 2
                 
-                win.client.configure(
-                    x=off_x, 
-                    y=off_y, 
-                    width=final_w, 
-                    height=final_h,
-                    border_width=0
-                )
+                win.client.configure(x=off_x, y=off_y, width=final_w, height=final_h, border_width=0)
             else:
                 win.client.unmap()
