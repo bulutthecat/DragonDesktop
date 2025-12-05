@@ -67,28 +67,68 @@ class WindowManager:
         return win
 
     def _setup_grabs(self):
-        # Mouse Grabs
+        # ... (Keep your existing mouse grabs) ...
         self.root.grab_button(4, X.AnyModifier, True, X.ButtonPressMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
         self.root.grab_button(5, X.AnyModifier, True, X.ButtonPressMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
         self.root.grab_button(1, X.Mod4Mask, True, X.ButtonPressMask | X.ButtonReleaseMask | X.ButtonMotionMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
         
-        # --- NEW: Grab Win+Space ---
-        # 32 is standard space keycode, but we should use keysym_to_keycode for safety
+        # Win + Space
         space_key = self.d.keysym_to_keycode(XK.string_to_keysym("space"))
         self.root.grab_key(space_key, X.Mod4Mask, True, X.GrabModeAsync, X.GrabModeAsync)
 
-        # --- GRAB F-KEYS (F1 to F4) ---
+        # F-Keys (Load/Save)
         f_keys = [XK.XK_F1, XK.XK_F2, XK.XK_F3, XK.XK_F4]
-        
         for ksym in f_keys:
             code = self.d.keysym_to_keycode(ksym)
-            
-            # Grab Win + F_Key (Load)
             self.root.grab_key(code, X.Mod4Mask, True, X.GrabModeAsync, X.GrabModeAsync)
-            
-            # Grab Win + Ctrl + F_Key (Save)
-            # Note: Modifiers are bitmasks, we use bitwise OR (|) to combine them
             self.root.grab_key(code, X.Mod4Mask | X.ControlMask, True, X.GrabModeAsync, X.GrabModeAsync)
+            
+        # --- NEW: Alt + F4 (Close Window) ---
+        # Mod1Mask is usually the "Alt" key
+        f4_key = self.d.keysym_to_keycode(XK.XK_F4)
+        self.root.grab_key(f4_key, X.Mod1Mask, True, X.GrabModeAsync, X.GrabModeAsync)
+
+    def get_fullscreen_window(self):
+        """Returns the ZWindow object if one is currently fullscreen, else None."""
+        for win in self.windows.values():
+            if win.is_fullscreen:
+                return win
+        return None
+
+    def close_focused_window(self):
+        """Finds which window has X11 focus and closes it."""
+        try:
+            # Ask X11 who has focus
+            focus_reply = self.d.get_input_focus()
+            focus_win = focus_reply.focus
+            
+            # FIX: If focus is X.PointerRoot (1) or X.None (0), it returns an int, not a Window object.
+            # We cannot close the "mouse pointer", so we just return.
+            if isinstance(focus_win, int):
+                return
+            
+            if not focus_win or focus_win == X.NONE: return
+
+            target_zwin = None
+            
+            # Check 1: Did we focus the Frame?
+            if focus_win.id in self.windows:
+                target_zwin = self.windows[focus_win.id]
+            
+            # Check 2: Did we focus the Client (the app inside)?
+            else:
+                for win in self.windows.values():
+                    if win.client.id == focus_win.id:
+                        target_zwin = win
+                        break
+            
+            if target_zwin:
+                print(f"Closing focused window: {target_zwin.title}")
+                self.close_window(target_zwin)
+                self.renderer.render_world(self.camera, self.windows)
+                
+        except Exception as e:
+            print(f"Error closing window: {e}")
 
     def run(self):
         while True:
@@ -132,55 +172,90 @@ class WindowManager:
                 print(f"Error: {e}")
         self.toggle_cmd_bar() # Close bar
 
+    def get_size_hints(self, window):
+        """
+        Reads WM_NORMAL_HINTS to get min/max size and resize increments.
+        Returns (min_w, min_h, max_w, max_h)
+        """
+        try:
+            # Xlib provides a helper for this standard property
+            hints = window.get_wm_normal_hints()
+            
+            # Default values if hints are missing
+            min_w, min_h = 0, 0
+            max_w, max_h = 32768, 32768
+
+            if hints:
+                if hints.flags & X.PMinSize:
+                    min_w = hints.min_width
+                    min_h = hints.min_height
+                if hints.flags & X.PMaxSize:
+                    max_w = hints.max_width
+                    max_h = hints.max_height
+            
+            return min_w, min_h, max_w, max_h
+        except:
+            return 0, 0, 32768, 32768
+
     def handle_map_request(self, window):
         if window.id in self.windows or window.id in self.btn_map: return
         
-        # 1. Get Geometry
-        try: geom = window.get_geometry()
+        # 1. Get Geometry & HINTS
+        try: 
+            geom = window.get_geometry()
+            min_w, min_h, max_w, max_h = self.get_size_hints(window)
         except: return
-        ww = 400 if geom.width < 50 else geom.width
-        wh = 300 if geom.height < 50 else geom.height
         
-        try:
-            name = window.get_wm_name()
-            if not name: name = "Untitled"
-        except:
-            name = "Untitled"
+        # --- Respect App's Requested Size ---
+        target_w = geom.width
+        target_h = geom.height
+
+        # Enforce Minimums
+        if target_w < min_w: target_w = min_w
+        if target_h < min_h: target_h = min_h
         
-        # 2. Get App Name for Coloring
-        # wm_class returns a tuple like ('xterm', 'XTerm')
+        # Defaults for unconfigured windows
+        if target_w < 50 and min_w < 50: target_w = 400
+        if target_h < 50 and min_h < 50: target_h = 300
+
+        # 2. Get App Name
         try:
+            name = window.get_wm_name() or "Untitled"
             wm_class = window.get_wm_class()
             app_name = wm_class[1] if wm_class else "unknown"
         except:
+            name = "Untitled"
             app_name = "unknown"
-            
-        print(f"Framing app: {app_name}")
+
+        print(f"Framing {app_name}: {target_w}x{target_h} (Min: {min_w}x{min_h})")
         
         # 3. Generate Theme
         theme = self.renderer.create_theme(app_name)
 
         # 4. Create Windows
-        sx, sy, sw, sh = self.renderer.project(self.camera, self.camera.x, self.camera.y, ww, wh + 25)
+        # We project the target size to screen coordinates
+        sx, sy, sw, sh = self.renderer.project(self.camera, self.camera.x, self.camera.y, target_w, target_h + 25)
 
-        # Frame
+        # --- FIX: FULL CREATE_WINDOW CALL ---
         frame = self.root.create_window(
-            sx, sy, sw, sh, border_width=1, depth=X.CopyFromParent, visual=X.CopyFromParent,
+            sx, sy, sw, sh,
+            border_width=1,
+            depth=X.CopyFromParent,
+            visual=X.CopyFromParent,
             background_pixel=theme['bar'],
             event_mask=X.StructureNotifyMask | X.ButtonPressMask | X.ButtonReleaseMask | X.ButtonMotionMask | X.SubstructureRedirectMask | X.ExposureMask
         )
         
-        # Initial sizing for buttons (Standard 20px, updated by renderer immediately anyway)
         btn_size = 20
         
-        # Close Button (Far Right)
+        # Close Button
         btn_close = frame.create_window(
             sw - btn_size, 0, btn_size, btn_size, 
             border_width=1, depth=X.CopyFromParent, visual=X.CopyFromParent,
             background_pixel=theme['close'], event_mask=X.ButtonPressMask
         )
         
-        # Fullscreen Button (Left of Close)
+        # Fullscreen Button
         btn_full = frame.create_window(
             sw - (btn_size * 2), 0, btn_size, btn_size, 
             border_width=1, depth=X.CopyFromParent, visual=X.CopyFromParent,
@@ -188,14 +263,21 @@ class WindowManager:
         )
 
         # 5. Model & Register
-        zwin = ZWindow(frame.id, window, frame, btn_close, btn_full, self.camera.x, self.camera.y, ww, wh + 25, title=name)
+        zwin = ZWindow(frame.id, window, frame, btn_close, btn_full, self.camera.x, self.camera.y, target_w, target_h + 25, title=name)
+        
+        # Save Hints into the Window Model (Crucial for Wine)
+        zwin.min_w = min_w
+        zwin.min_h = min_h
+        zwin.max_w = max_w
+        zwin.max_h = max_h
         
         self.windows[frame.id] = zwin
         self.btn_map[btn_close.id] = ('close', zwin)
         self.btn_map[btn_full.id] = ('maximize', zwin)
 
         window.reparent(frame, 0, 25)
-        window.configure(border_width=0)
+        # We don't force configure here anymore, the renderer loop handles it based on hints
+        
         frame.map()
         window.map()
         btn_close.map()
@@ -211,15 +293,25 @@ class WindowManager:
 
     def toggle_fullscreen(self, zwin):
         screen = self.root.get_geometry()
-        if zwin.saved_geometry:
-            zwin.world_x, zwin.world_y, zwin.world_w, zwin.world_h = zwin.saved_geometry
-            zwin.saved_geometry = None
+        
+        if zwin.is_fullscreen:
+            # RESTORE to Windowed
+            if zwin.saved_geometry:
+                zwin.world_x, zwin.world_y, zwin.world_w, zwin.world_h = zwin.saved_geometry
+                zwin.saved_geometry = None
+            zwin.is_fullscreen = False
         else:
+            # GO FULLSCREEN
             zwin.saved_geometry = (zwin.world_x, zwin.world_y, zwin.world_w, zwin.world_h)
+            
+            # Calculate world units needed to fill screen at current zoom
             zwin.world_w = int(screen.width / self.camera.zoom)
             zwin.world_h = int(screen.height / self.camera.zoom)
             zwin.world_x = int(self.camera.x - (zwin.world_w / 2))
             zwin.world_y = int(self.camera.y - (zwin.world_h / 2))
+            
+            zwin.is_fullscreen = True
+
         self.renderer.render_world(self.camera, self.windows)
 
     def zoom_camera(self, direction):

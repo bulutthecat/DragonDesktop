@@ -194,29 +194,91 @@ class Renderer:
         self.draw_wallpaper(camera)
 
         # 2. Draw Windows
+        # Only draw content if we aren't zoomed out too far
         show_content = camera.zoom > 0.5
-        scaled_title = int(25 * camera.zoom)
-        if scaled_title < 10: scaled_title = 10 
 
         for win in windows.values():
+            
+            # --- FIX 1: HIDE TITLE BAR IF FULLSCREEN ---
+            # If fullscreen, title bar height is 0. Otherwise, it scales with zoom.
+            if win.is_fullscreen:
+                scaled_title = 0
+            else:
+                scaled_title = int(25 * camera.zoom)
+                if scaled_title < 10: scaled_title = 10 
+
+            # Project World Coords -> Screen Coords
             sx, sy, sw, sh = self.project(
                 camera, win.world_x, win.world_y, win.world_w, win.world_h
             )
-            win.frame.configure(x=sx, y=sy, width=sw, height=sh)
-            win.btn_close.configure(x=sw - scaled_title, y=0, width=scaled_title, height=scaled_title)
-            win.btn_full.configure(x=sw - (scaled_title * 2), y=0, width=scaled_title, height=scaled_title)
 
-            text_area_w = sw - (scaled_title * 2)
-            if text_area_w > 0:
-                win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)
-                if show_content:
-                    text_y = int(scaled_title * 0.7)
-                    try:
-                        win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))
-                    except: pass
+            # --- FIX 2: STRICT SIZING FOR FIXED APPS (WINE) ---
+            # If the app is "fixed size" (min == max), we must IGNORE the world geometry calculations
+            # regarding aspect ratio and FORCE the frame to match the client's requested size exactly.
             
+            is_fixed_size = (win.min_w == win.max_w) and (win.min_w > 0)
+            
+            if is_fixed_size and not win.is_fullscreen:
+                # Force frame width to match the app's fixed width * zoom
+                sw = int(win.min_w * camera.zoom)
+                # Force frame height to match app's height * zoom + title bar
+                sh = int(win.min_h * camera.zoom) + scaled_title
+
+            # Configure the Frame
+            win.frame.configure(x=sx, y=sy, width=sw, height=sh)
+
+            # Handle Buttons (Hide them if title bar is 0)
+            if scaled_title > 0:
+                win.btn_close.map()
+                win.btn_full.map()
+                win.btn_close.configure(x=sw - scaled_title, y=0, width=scaled_title, height=scaled_title)
+                win.btn_full.configure(x=sw - (scaled_title * 2), y=0, width=scaled_title, height=scaled_title)
+                
+                # Draw Title Text
+                text_area_w = sw - (scaled_title * 2)
+                if text_area_w > 0:
+                    win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)
+                    if show_content:
+                        text_y = int(scaled_title * 0.7)
+                        try:
+                            win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))
+                        except: pass
+            else:
+                # Hide buttons in fullscreen/no-title mode
+                win.btn_close.unmap()
+                win.btn_full.unmap()
+
+            # Handle Client Content
             if show_content:
                 win.client.map()
-                win.client.configure(width=sw, height=sh - scaled_title, y=scaled_title)
+                
+                # Available space for the app inside the frame
+                avail_w = sw
+                avail_h = sh - scaled_title
+                
+                # Apply Size Constraints (Min/Max)
+                scaled_min_w = int(win.min_w * camera.zoom)
+                scaled_min_h = int(win.min_h * camera.zoom)
+                
+                final_w = avail_w
+                final_h = avail_h
+                
+                # Clamp Width
+                if final_w < scaled_min_w: final_w = scaled_min_w
+                # Clamp Height
+                if final_h < scaled_min_h: final_h = scaled_min_h
+                
+                # Center the Client (Letterboxing)
+                # If we are in "Strict Mode", off_x/off_y will be 0 naturally.
+                off_x = (avail_w - final_w) // 2
+                off_y = scaled_title + (avail_h - final_h) // 2
+                
+                win.client.configure(
+                    x=off_x, 
+                    y=off_y, 
+                    width=final_w, 
+                    height=final_h,
+                    border_width=0
+                )
             else:
                 win.client.unmap()

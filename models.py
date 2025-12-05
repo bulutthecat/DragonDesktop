@@ -11,18 +11,21 @@ class ZWindow:
         self.id = frame_id
         self.client = client_window
         self.frame = frame_window
-        
-        # --- NEW: Store Title ---
         self.title = title
         
-        # Buttons
         self.btn_close = close_btn
         self.btn_full = full_btn
         
-        # World Geometry
         self.world_x = x
         self.world_y = y
         self.world_w = w
         self.world_h = h
         
+        self.min_w = 0
+        self.min_h = 0
+        self.max_w = 32768
+        self.max_h = 32768
+        
+        # --- State Tracking ---
+        self.is_fullscreen = False
         self.saved_geometry = None

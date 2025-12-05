@@ -5,6 +5,8 @@ class InputHandler:
         self.wm = wm 
         self.drag_mode = None 
         self.drag_start_event = None
+        self.drag_start_cam = (0, 0)
+        self.drag_start_frame = {'x': 0, 'y': 0}
 
     def handle_event(self, event):
         # --- NEW: Handle Typing in Command Mode ---
@@ -24,12 +26,22 @@ class InputHandler:
             self._on_release(event)
         
         # --- NEW: Redraw bar if it was covered/exposed ---
-        elif event.type == X.Expose and event.window.id == self.wm.cmd_window.id:
+        elif event.type == X.Expose and hasattr(self.wm, 'cmd_window') and event.window.id == self.wm.cmd_window.id:
              self.wm.draw_bar()
              
     def _on_key_normal(self, event):
         keysym = self.wm.d.keycode_to_keysym(event.detail, 0)
         
+        # --- NEW: Alt + F4 -> Close Focused Window ---
+        # Mod1Mask is usually the "Alt" key
+        if keysym == XK.XK_F4 and (event.state & X.Mod1Mask):
+            self.wm.close_focused_window()
+            return
+        
+        if keysym == XK.XK_asciitilde and (event.state & X.Mod4Mask):
+            self.wm.WindowManager.camera.zoom = 0.11
+            return
+
         # Win + Space -> Toggle Bar
         if (event.state & X.Mod4Mask) and keysym == XK.string_to_keysym("space"):
             self.wm.toggle_cmd_bar()
@@ -79,12 +91,8 @@ class InputHandler:
         
         # 4. Normal Characters (a-z, 0-9, etc)
         else:
-            # We try to convert keycode to a char
-            # This is a naive implementation (doesn't handle Shift perfectly for symbols)
-            # But it works for basic launch commands
             try:
-                # Xlib lookup_string is complex, naive chr() mapping often fails for raw keycodes
-                # Simplest way for prototype: lookup string name
+                # Naive character mapping
                 key_str = XK.keysym_to_string(keysym)
                 if key_str and len(key_str) == 1:
                     self.wm.cmd_text += key_str
@@ -102,11 +110,21 @@ class InputHandler:
     def _on_click(self, event):
         # 1. SCROLL (Zoom)
         if event.detail in [4, 5]:
+            # FIX: Disable Zoom if ANY window is fullscreen
+            if self.wm.get_fullscreen_window():
+                return 
+
             self.wm.zoom_camera(1 if event.detail == 4 else -1)
             return
 
         # 2. PAN (Win + Left Click)
         if (event.state & X.Mod4Mask) and event.detail == 1:
+            # FIX: Check for Fullscreen -> Exit Fullscreen instead of Panning
+            fs_win = self.wm.get_fullscreen_window()
+            if fs_win:
+                self.wm.toggle_fullscreen(fs_win)
+                return
+
             self.drag_mode = 'CAMERA'
             self.drag_start_event = event
             self.drag_start_cam = (self.wm.camera.x, self.wm.camera.y)
@@ -120,8 +138,6 @@ class InputHandler:
             return
 
         # 4. Window Drag
-        # Find which window we clicked (by checking frames)
-        # In a real app we'd map frame_id -> window object directly
         win_obj = self.wm.get_window_by_frame(event.window.id)
         if win_obj:
             self.drag_mode = 'WINDOW'
@@ -142,6 +158,7 @@ class InputHandler:
         wydiff = int(ysdiff / safe_zoom)
 
         if self.drag_mode == 'CAMERA':
+            # Invert Logic: Dragging mouse RIGHT moves camera LEFT
             self.wm.camera.x = self.drag_start_cam[0] - wxdiff
             self.wm.camera.y = self.drag_start_cam[1] - wydiff
             self.wm.renderer.render_world(self.wm.camera, self.wm.windows)
@@ -155,6 +172,6 @@ class InputHandler:
 
     def _on_release(self, event):
         self.drag_mode = None
-        # Clean up artifacts
+        # Clean up artifacts (clear areas that might have been drawn over)
         win_obj = self.wm.get_window_by_frame(event.window.id)
         if win_obj: win_obj.frame.clear_area()
