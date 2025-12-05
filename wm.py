@@ -51,24 +51,51 @@ class WindowManager:
         return win
 
     def _setup_grabs(self):
-        # 1. Mod4 (Win) + Scroll (4, 5) -> Zoom
-        self.root.grab_button(4, X.Mod4Mask, True, X.ButtonPressMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
-        self.root.grab_button(5, X.Mod4Mask, True, X.ButtonPressMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
-        
-        # 2. Win + Space
-        space_key = self.d.keysym_to_keycode(XK.string_to_keysym("space"))
-        self.root.grab_key(space_key, X.Mod4Mask, True, X.GrabModeAsync, X.GrabModeAsync)
+        # Define a list of modifier combinations to ensure shortcuts work 
+        # even if NumLock (Mod2) or CapsLock (Lock) are on.
+        # We want: Mod4 (Win) +/- NumLock +/- CapsLock
+        masks = [
+            X.Mod4Mask, 
+            X.Mod4Mask | X.Mod2Mask, 
+            X.Mod4Mask | X.LockMask, 
+            X.Mod4Mask | X.Mod2Mask | X.LockMask
+        ]
 
-        # 3. F-Keys
+        # 1. Mouse Grabs (Zoom & Pan)
+        # We loop through masks so you can drag windows even with NumLock on
+        for mask in masks:
+            # Win + Scroll (Zoom)
+            self.root.grab_button(4, mask, True, X.ButtonPressMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
+            self.root.grab_button(5, mask, True, X.ButtonPressMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
+            # Win + Click (Pan)
+            self.root.grab_button(1, mask, True, X.ButtonPressMask | X.ButtonReleaseMask | X.ButtonMotionMask, X.GrabModeAsync, X.GrabModeAsync, X.NONE, X.NONE)
+
+        # 2. Win + Space (Command Bar)
+        space_key = self.d.keysym_to_keycode(XK.string_to_keysym("space"))
+        for mask in masks:
+            self.root.grab_key(space_key, mask, True, X.GrabModeAsync, X.GrabModeAsync)
+
+        # 3. F-Keys (Camera Controls)
         f_keys = [XK.XK_F1, XK.XK_F2, XK.XK_F3, XK.XK_F4]
         for ksym in f_keys:
             code = self.d.keysym_to_keycode(ksym)
-            self.root.grab_key(code, X.Mod4Mask, True, X.GrabModeAsync, X.GrabModeAsync)
-            self.root.grab_key(code, X.Mod4Mask | X.ControlMask, True, X.GrabModeAsync, X.GrabModeAsync)
-            
-        # 4. Alt + F4
+            for mask in masks:
+                # Win + Fx (Load)
+                self.root.grab_key(code, mask, True, X.GrabModeAsync, X.GrabModeAsync)
+                # Win + Ctrl + Fx (Save)
+                self.root.grab_key(code, mask | X.ControlMask, True, X.GrabModeAsync, X.GrabModeAsync)
+           
+        # 4. Alt + F4 (Close Window)
+        # We need a separate mask list for Alt (Mod1)
         f4_key = self.d.keysym_to_keycode(XK.XK_F4)
-        self.root.grab_key(f4_key, X.Mod1Mask, True, X.GrabModeAsync, X.GrabModeAsync)
+        alt_masks = [
+            X.Mod1Mask, 
+            X.Mod1Mask | X.Mod2Mask, 
+            X.Mod1Mask | X.LockMask, 
+            X.Mod1Mask | X.Mod2Mask | X.LockMask
+        ]
+        for mask in alt_masks:
+            self.root.grab_key(f4_key, mask, True, X.GrabModeAsync, X.GrabModeAsync)
 
     def focus_window(self, zwin):
         try:
@@ -77,7 +104,6 @@ class WindowManager:
         except Exception as e:
             print(f"Focus Error: {e}")
 
-    # --- THIS WAS MISSING AND CAUSED THE CRASH ---
     def get_fullscreen_window(self):
         """Returns the ZWindow object if one is currently fullscreen, else None."""
         for win in self.windows.values():
@@ -98,7 +124,7 @@ class WindowManager:
                     if win.client.id == focus_win.id:
                         target_zwin = win
                         break
-            
+           
             if target_zwin:
                 self.close_window(target_zwin)
                 self.renderer.render_world(self.camera, self.windows)
@@ -106,7 +132,6 @@ class WindowManager:
             print(f"Error closing window: {e}")
 
     def run(self):
-        # --- CRASH PROTECTION ---
         # We wrap the loop so one error doesn't kill the whole desktop session
         while True:
             try:
@@ -119,7 +144,6 @@ class WindowManager:
                 break
             except Exception as e:
                 print(f"CRITICAL WM ERROR: {e}")
-                # We continue the loop so the desktop stays alive
 
     def toggle_cmd_bar(self):
         if self.cmd_active:
