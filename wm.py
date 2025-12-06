@@ -1,5 +1,6 @@
 import subprocess
 from Xlib import X, display, XK
+from Xlib import error as XError
 from models import Camera, ZWindow
 from renderer import Renderer
 from input import InputHandler
@@ -98,11 +99,29 @@ class WindowManager:
             self.root.grab_key(f4_key, mask, True, X.GrabModeAsync, X.GrabModeAsync)
 
     def focus_window(self, zwin):
+        """
+        Safely attempts to focus a window. 
+        Handles BadMatch (Window not viewable) and BadWindow (Window died).
+        """
         try:
+            # 1. Set input focus to the actual client app
             self.d.set_input_focus(zwin.client, X.RevertToParent, X.CurrentTime)
+            
+            # 2. Raise the frame to the top of the visual stack
             zwin.frame.raise_window()
+        except XError.BadMatch:
+            # Occurs if the window is not "viewable" yet.
+            # This is common during startup or workspace switching. 
+            # We just ignore it; the user will click again if they need it.
+            pass 
+        except XError.BadWindow:
+            # The window died while we were trying to focus it.
+            # We trigger a cleanup to remove it from our list.
+            print(f"Window {zwin.id} disappeared during focus.")
+            self.close_window(zwin)
         except Exception as e:
-            print(f"Focus Error: {e}")
+            print(f"Generic Focus Error: {e}")
+
 
     def get_fullscreen_window(self):
         """Returns the ZWindow object if one is currently fullscreen, else None."""
@@ -252,14 +271,31 @@ class WindowManager:
         self.renderer.render_world(self.camera, self.windows)
 
     def close_window(self, zwin):
+        """
+        Safely destroys a window.
+        Handles cases where the window is already gone (BadWindow).
+        """
+        # 1. Remove from internal list immediately to prevent further render attempts
         if zwin.id in self.windows:
-            try:
-                zwin.client.destroy()
-                zwin.frame.destroy()
-            except: pass
             del self.windows[zwin.id]
-            self.renderer.render_world(self.camera, self.windows)
 
+        # 2. Try to destroy the client (the app)
+        try:
+            zwin.client.kill_client() # kill_client is often safer than destroy for apps
+        except XError.BadWindow:
+            pass # It's already gone, which is fine.
+        except Exception:
+            pass
+
+        # 3. Destroy our frame (the decoration)
+        try:
+            zwin.frame.destroy()
+        except XError.BadWindow:
+            pass
+        
+        # 4. Re-render to clear the screen gap
+        self.renderer.render_world(self.camera, self.windows)
+        
     def toggle_fullscreen(self, zwin):
         screen = self.root.get_geometry()
         if zwin.is_fullscreen:

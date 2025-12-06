@@ -1,4 +1,5 @@
 from Xlib import X
+from Xlib import error as XError
 import hashlib
 from PIL import Image
 import sys 
@@ -165,58 +166,91 @@ class Renderer:
         return sx, sy, sw, sh
 
     def render_world(self, camera, windows):
+        # 1. DRAW STATIC WALLPAPER
         self.draw_wallpaper(camera)
+
+        # 2. Draw Windows
         show_content = camera.zoom > 0.5
+        
+        # We create a list of dead windows to clean up after the loop
+        # We cannot delete from 'windows' while iterating over it
+        dead_windows = []
 
-        for win in windows.values():
-            if win.is_fullscreen:
-                scaled_title = 0
-            else:
-                scaled_title = int(25 * camera.zoom)
-                if scaled_title < 10: scaled_title = 10 
+        for frame_id, win in windows.items():
+            try:
+                # --- CALCULATION LOGIC (Safe, purely math) ---
+                if win.is_fullscreen:
+                    scaled_title = 0
+                else:
+                    scaled_title = int(25 * camera.zoom)
+                    if scaled_title < 10: scaled_title = 10 
 
-            sx, sy, sw, sh = self.project(
-                camera, win.world_x, win.world_y, win.world_w, win.world_h
-            )
+                sx, sy, sw, sh = self.project(
+                    camera, win.world_x, win.world_y, win.world_w, win.world_h
+                )
 
-            is_fixed_size = (win.min_w == win.max_w) and (win.min_w > 0)
-            
-            if is_fixed_size and not win.is_fullscreen:
-                sw = int(win.min_w * camera.zoom)
-                sh = int(win.min_h * camera.zoom) + scaled_title
-
-            win.frame.configure(x=sx, y=sy, width=sw, height=sh)
-
-            if scaled_title > 0:
-                win.btn_close.map()
-                win.btn_full.map()
-                win.btn_close.configure(x=sw - scaled_title, y=0, width=scaled_title, height=scaled_title)
-                win.btn_full.configure(x=sw - (scaled_title * 2), y=0, width=scaled_title, height=scaled_title)
+                is_fixed_size = (win.min_w == win.max_w) and (win.min_w > 0)
                 
-                text_area_w = sw - (scaled_title * 2)
-                if text_area_w > 0:
-                    win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)
-                    if show_content:
-                        text_y = int(scaled_title * 0.7)
-                        try:
-                            win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))
-                        except: pass
-            else:
-                win.btn_close.unmap()
-                win.btn_full.unmap()
+                if is_fixed_size and not win.is_fullscreen:
+                    sw = int(win.min_w * camera.zoom)
+                    sh = int(win.min_h * camera.zoom) + scaled_title
 
-            if show_content:
-                win.client.map()
-                avail_w = sw
-                avail_h = sh - scaled_title
-                scaled_min_w = int(win.min_w * camera.zoom)
-                scaled_min_h = int(win.min_h * camera.zoom)
-                final_w = max(avail_w, scaled_min_w)
-                final_h = max(avail_h, scaled_min_h)
+                # --- XLIB INTERACTION (Dangerous Zone) ---
                 
-                off_x = (avail_w - final_w) // 2
-                off_y = scaled_title + (avail_h - final_h) // 2
-                
-                win.client.configure(x=off_x, y=off_y, width=final_w, height=final_h, border_width=0)
-            else:
-                win.client.unmap()
+                # 1. Configure Frame
+                win.frame.configure(x=sx, y=sy, width=sw, height=sh)
+
+                # 2. Configure Buttons
+                if scaled_title > 0:
+                    win.btn_close.map()
+                    win.btn_full.map()
+                    win.btn_close.configure(x=sw - scaled_title, y=0, width=scaled_title, height=scaled_title)
+                    win.btn_full.configure(x=sw - (scaled_title * 2), y=0, width=scaled_title, height=scaled_title)
+                    
+                    # Draw Title
+                    text_area_w = sw - (scaled_title * 2)
+                    if text_area_w > 0:
+                        win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)
+                        if show_content:
+                            text_y = int(scaled_title * 0.7)
+                            # Draw text can fail if font server is busy, wrap it
+                            try: win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))
+                            except: pass
+                else:
+                    win.btn_close.unmap()
+                    win.btn_full.unmap()
+
+                # 3. Configure Client (The App itself)
+                if show_content:
+                    win.client.map()
+                    avail_w = sw
+                    avail_h = sh - scaled_title
+                    
+                    scaled_min_w = int(win.min_w * camera.zoom)
+                    scaled_min_h = int(win.min_h * camera.zoom)
+                    
+                    final_w = max(avail_w, scaled_min_w)
+                    final_h = max(avail_h, scaled_min_h)
+                    
+                    off_x = (avail_w - final_w) // 2
+                    off_y = scaled_title + (avail_h - final_h) // 2
+                    
+                    win.client.configure(
+                        x=off_x, y=off_y, 
+                        width=final_w, height=final_h, 
+                        border_width=0
+                    )
+                else:
+                    win.client.unmap()
+
+            except XError.BadWindow:
+                # The window died mid-render. Mark it for removal.
+                dead_windows.append(frame_id)
+            except Exception as e:
+                print(f"Render error on win {frame_id}: {e}")
+
+        # Clean up dead windows from the dictionary
+        # (Note: In a real app, you might want to signal back to WM to delete properly)
+        for fid in dead_windows:
+            if fid in windows:
+                del windows[fid]
