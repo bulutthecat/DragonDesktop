@@ -1,3 +1,6 @@
-{
-    "wallpaper_path": "/home/drakken/Downloads/city.png"
-}
+{  
+    "wallpaper_path": "/opt/dragondesktop/dragon.png",  
+    "aliases": {  
+        "settings": "python3 settings_menu.py"  
+    }  
+}  
