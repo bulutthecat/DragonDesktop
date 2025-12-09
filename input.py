@@ -91,63 +91,84 @@ class InputHandler:
 
         self.wm.draw_bar()
 
-    def _on_click(self, event):
-        # 1. ZOOM: Win Key (Mod4) + Scroll (4/5)
-        if event.state & X.Mod4Mask and event.detail in [4, 5]:
-            if self.wm.get_fullscreen_window(): return 
-            self.wm.zoom_camera(1 if event.detail == 4 else -1)
-            return
+    def _on_click(self, event):  
+        # 1. ZOOM: Win Key (Mod4) + Scroll (4/5)  
+        if event.state & X.Mod4Mask and event.detail in [4, 5]:  
+            if self.wm.get_fullscreen_window(): return   
+            self.wm.zoom_camera(1 if event.detail == 4 else -1)  
+            return  
+    
+        # 2. PAN: Win + Left Click  
+        if (event.state & X.Mod4Mask) and event.detail == 1:  
+            fs_win = self.wm.get_fullscreen_window()  
+            if fs_win:  
+                self.wm.toggle_fullscreen(fs_win)  
+                return  
+            self.drag_mode = 'CAMERA'  
+            self.drag_start_event = event  
+            self.drag_start_cam = (self.wm.camera.x, self.wm.camera.y)  
+            return  
+    
+        # 3. UI Buttons (Close/Max)  
+        if event.window.id in self.wm.btn_map:  
+            action, win_obj = self.wm.btn_map[event.window.id]  
+            if action == 'close': self.wm.close_window(win_obj)  
+            elif action == 'maximize': self.wm.toggle_fullscreen(win_obj)  
+            return  
+    
+        # 4. Window Interaction (Move/Resize/Focus)  
+        win_obj = self.wm.get_window_by_frame(event.window.id)  
+        if win_obj:  
+            self.wm.focus_window(win_obj)  
+            event.window.configure(stack_mode=X.Above)  
+              
+            # Determine Drag Mode (Move vs Resize)  
+            try:  
+                geom = event.window.get_geometry()  
+                click_x = event.event_x  
+                click_y = event.event_y  
+                w = geom.width  
+                h = geom.height  
+                  
+                # Check for Bottom-Right Corner (40px threshold)  
+                is_corner = (click_x > w - 40) and (click_y > h - 40)  
+                  
+                if is_corner:  
+                    self.drag_mode = 'RESIZE'  
+                else:  
+                    self.drag_mode = 'WINDOW'  
+                  
+                self.drag_start_event = event  
+                self.drag_start_frame = {  
+                    'x': win_obj.world_x,   
+                    'y': win_obj.world_y,  
+                    'w': win_obj.world_w,  
+                    'h': win_obj.world_h  
+                }  
+            except:  
+                self.drag_mode = None  
+            return  
+    
+        # 5. DESKTOP CLICK - Unfocus all windows (NEW!)  
+        if event.window.id == self.wm.root.id:  
+            print("Desktop clicked - unfocusing all")  
+            self.wm.unfocus_all()  
+            return  
+    
+        # 6. Client Window Click - Pass through (NEW!)  
+        # Check if this is a click on a client window  
+        for win_obj in self.wm.windows.values():  
+            if event.window.id == win_obj.client.id:  
+                print(f"Client window clicked: {win_obj.title}")  
+                self.wm.focus_window(win_obj)  
+                win_obj.frame.configure(stack_mode=X.Above)  
+                # Replay the event to the client window  
+                try:  
+                    self.wm.d.allow_events(X.ReplayPointer, event.time)  
+                except:  
+                    pass  
+                return  
 
-        # 2. PAN: Win + Left Click
-        if (event.state & X.Mod4Mask) and event.detail == 1:
-            fs_win = self.wm.get_fullscreen_window()
-            if fs_win:
-                self.wm.toggle_fullscreen(fs_win)
-                return
-
-            self.drag_mode = 'CAMERA'
-            self.drag_start_event = event
-            self.drag_start_cam = (self.wm.camera.x, self.wm.camera.y)
-            return
-
-        # 3. UI Buttons (Close/Max)
-        if event.window.id in self.wm.btn_map:
-            action, win_obj = self.wm.btn_map[event.window.id]
-            if action == 'close': self.wm.close_window(win_obj)
-            elif action == 'maximize': self.wm.toggle_fullscreen(win_obj)
-            return
-
-        # 4. Window Interaction (Move/Resize/Focus)
-        win_obj = self.wm.get_window_by_frame(event.window.id)
-        if win_obj:
-            self.wm.focus_window(win_obj)
-            event.window.configure(stack_mode=X.Above)
-
-            # Determine Drag Mode (Move vs Resize)
-            try:
-                geom = event.window.get_geometry()
-                click_x = event.event_x
-                click_y = event.event_y
-                w = geom.width
-                h = geom.height
-                
-                # Check for Bottom-Right Corner (40px threshold)
-                is_corner = (click_x > w - 40) and (click_y > h - 40)
-                
-                if is_corner:
-                    self.drag_mode = 'RESIZE'
-                else:
-                    self.drag_mode = 'WINDOW'
-                    
-                self.drag_start_event = event
-                self.drag_start_frame = {
-                    'x': win_obj.world_x, 
-                    'y': win_obj.world_y,
-                    'w': win_obj.world_w,
-                    'h': win_obj.world_h
-                }
-            except:
-                self.drag_mode = None
 
     def _on_motion(self, event):
         if not self.drag_mode or not self.drag_start_event: return
