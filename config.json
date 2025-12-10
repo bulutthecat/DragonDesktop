@@ -1,6 +1,6 @@
-{  
-    "wallpaper_path": "/opt/dragondesktop/dragon.png",  
-    "aliases": {  
-        "settings": "python3 settings_menu.py"  
-    }  
-}  
+{
+    "wallpaper_path": "/home/bulut/Downloads/marc-olivier-jodoin-MJv31qXqSOU-unsplash.jpg",
+    "aliases": {
+        "settings": "python3 settings_menu.py"
+    }
+}

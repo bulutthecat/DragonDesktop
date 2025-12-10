@@ -164,93 +164,135 @@ class Renderer:
         sw = max(5, min(sw, 30000))
         sh = max(5, min(sh, 30000))
         return sx, sy, sw, sh
-
-    def render_world(self, camera, windows):
-        # 1. DRAW STATIC WALLPAPER
-        self.draw_wallpaper(camera)
-
-        # 2. Draw Windows
-        show_content = camera.zoom > 0.5
-        
-        # We create a list of dead windows to clean up after the loop
-        # We cannot delete from 'windows' while iterating over it
-        dead_windows = []
-
-        for frame_id, win in windows.items():
-            try:
-                # --- CALCULATION LOGIC (Safe, purely math) ---
-                if win.is_fullscreen:
-                    scaled_title = 0
-                else:
-                    scaled_title = int(25 * camera.zoom)
-                    if scaled_title < 10: scaled_title = 10 
-
-                sx, sy, sw, sh = self.project(
-                    camera, win.world_x, win.world_y, win.world_w, win.world_h
-                )
-
-                is_fixed_size = (win.min_w == win.max_w) and (win.min_w > 0)
+    def render_world(self, camera, windows):  
+        # 1. DRAW STATIC WALLPAPER  
+        self.draw_wallpaper(camera)  
+    
+        # 2. Draw Windows  
+        show_content = camera.zoom > 0.5  
+        dead_windows = []  
+    
+        for frame_id, win in windows.items():  
+            try:  
+                # --- CALCULATION LOGIC ---  
+                if win.is_fullscreen:  
+                    scaled_title = 0  
+                else:  
+                    scaled_title = int(25 * camera.zoom)  
+                    # IMPORTANT: Don't let title bar disappear at low zoom  
+                    if scaled_title < 8:  
+                        scaled_title = 8  
+    
+                sx, sy, sw, sh = self.project(  
+                    camera, win.world_x, win.world_y, win.world_w, win.world_h  
+                )  
+    
+                # Sanity check: Ensure window has minimum renderable size  
+                if sw < 5 or sh < 5:  
+                    continue  
                 
-                if is_fixed_size and not win.is_fullscreen:
-                    sw = int(win.min_w * camera.zoom)
-                    sh = int(win.min_h * camera.zoom) + scaled_title
-
-                # --- XLIB INTERACTION (Dangerous Zone) ---
+                is_fixed_size = (win.min_w == win.max_w) and (win.min_w > 0)  
+                if is_fixed_size and not win.is_fullscreen:  
+                    sw = int(win.min_w * camera.zoom)  
+                    sh = int(win.min_h * camera.zoom) + scaled_title  
+    
+                # --- CONFIGURE FRAME (Wrapped separately to catch errors) ---  
+                try:  
+                    win.frame.configure(x=sx, y=sy, width=sw, height=sh)  
+                    win.frame.map()  # Ensure it's visible  
+                except XError.BadWindow:  
+                    dead_windows.append(frame_id)  
+                    continue  
                 
-                # 1. Configure Frame
-                win.frame.configure(x=sx, y=sy, width=sw, height=sh)
-
-                # 2. Configure Buttons
-                if scaled_title > 0:
-                    win.btn_close.map()
-                    win.btn_full.map()
-                    win.btn_close.configure(x=sw - scaled_title, y=0, width=scaled_title, height=scaled_title)
-                    win.btn_full.configure(x=sw - (scaled_title * 2), y=0, width=scaled_title, height=scaled_title)
+                # --- HANDLE TITLE BAR & BUTTONS ---  
+                if scaled_title > 0 and not win.is_fullscreen:  
+                    try:  
+                        win.btn_close.map()  
+                        win.btn_full.map()  
+                        win.btn_close.configure(  
+                            x=sw - scaled_title,   
+                            y=0,   
+                            width=scaled_title,   
+                            height=scaled_title  
+                        )  
+                        win.btn_full.configure(  
+                            x=sw - (scaled_title * 2),   
+                            y=0,   
+                            width=scaled_title,   
+                            height=scaled_title  
+                        )  
+                    except:  
+                        pass  # Buttons might be too small, skip them  
                     
-                    # Draw Title
-                    text_area_w = sw - (scaled_title * 2)
-                    if text_area_w > 0:
-                        win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)
-                        if show_content:
-                            text_y = int(scaled_title * 0.7)
-                            # Draw text can fail if font server is busy, wrap it
-                            try: win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))
-                            except: pass
-                else:
-                    win.btn_close.unmap()
-                    win.btn_full.unmap()
-
-                # 3. Configure Client (The App itself)
-                if show_content:
-                    win.client.map()
-                    avail_w = sw
-                    avail_h = sh - scaled_title
+                    # Draw Title  
+                    text_area_w = sw - (scaled_title * 2)  
+                    if text_area_w > 10:  
+                        try:  
+                            win.frame.clear_area(x=0, y=0, width=text_area_w, height=scaled_title)  
+                            if show_content and camera.zoom > 0.7:  # Only show text at readable zoom  
+                                text_y = int(scaled_title * 0.7)  
+                                win.frame.draw_text(self.gc, 5, text_y, win.title.encode('utf-8'))  
+                        except:  
+                            pass  
+                else:  
+                    # Hide buttons in fullscreen or when too small  
+                    try:  
+                        win.btn_close.unmap()  
+                        win.btn_full.unmap()  
+                    except:  
+                        pass  
                     
-                    scaled_min_w = int(win.min_w * camera.zoom)
-                    scaled_min_h = int(win.min_h * camera.zoom)
+                # --- HANDLE CLIENT CONTENT ---  
+                if show_content:  
+                    # HIGH DETAIL: Show actual app  
+                    try:  
+                        win.client.map()  
+    
+                        avail_w = sw  
+                        avail_h = sh - scaled_title  
+    
+                        scaled_min_w = int(win.min_w * camera.zoom) if win.min_w > 0 else avail_w  
+                        scaled_min_h = int(win.min_h * camera.zoom) if win.min_h > 0 else avail_h  
+    
+                        final_w = max(avail_w, scaled_min_w)  
+                        final_h = max(avail_h, scaled_min_h)  
+    
+                        off_x = max(0, (avail_w - final_w) // 2)  
+                        off_y = max(0, scaled_title + (avail_h - final_h) // 2)  
+    
+                        win.client.configure(  
+                            x=off_x, y=off_y,  
+                            width=final_w, height=final_h,  
+                            border_width=0  
+                        )  
+                    except XError.BadWindow:  
+                        dead_windows.append(frame_id)  
+                        continue  
+                    except:  
+                        pass  # Client might not accept this configuration  
+                else:  
+                    # LOW DETAIL: Show colored block placeholder  
+                    try:  
+                        win.client.unmap()  
+                        # Clear the entire frame to show background color  
+                        win.frame.clear_area(  
+                            x=0,   
+                            y=0,  # Clear entire frame including title area  
+                            width=sw,   
+                            height=sh  
+                        )  
+                    except:  
+                        pass  
                     
-                    final_w = max(avail_w, scaled_min_w)
-                    final_h = max(avail_h, scaled_min_h)
-                    
-                    off_x = (avail_w - final_w) // 2
-                    off_y = scaled_title + (avail_h - final_h) // 2
-                    
-                    win.client.configure(
-                        x=off_x, y=off_y, 
-                        width=final_w, height=final_h, 
-                        border_width=0
-                    )
-                else:
-                    win.client.unmap()
-
-            except XError.BadWindow:
-                # The window died mid-render. Mark it for removal.
-                dead_windows.append(frame_id)
-            except Exception as e:
-                print(f"Render error on win {frame_id}: {e}")
-
-        # Clean up dead windows from the dictionary
-        # (Note: In a real app, you might want to signal back to WM to delete properly)
-        for fid in dead_windows:
-            if fid in windows:
-                del windows[fid]
+            except XError.BadWindow:  
+                dead_windows.append(frame_id)  
+            except Exception as e:  
+                print(f"Render error on win {frame_id}: {e}")  
+                import traceback  
+                traceback.print_exc()  
+    
+        # Clean up dead windows  
+        for fid in dead_windows:  
+            if fid in windows:  
+                del windows[fid]  
+    

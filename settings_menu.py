@@ -46,7 +46,7 @@ class SettingsMenu:
         # Wallpaper Section  
         wallpaper_frame = tk.LabelFrame(self.root, text="Wallpaper",   
                                        padx=10, pady=10)  
-        wallpaper_frame.pack(fill="both", expand=True, padx=10, pady=10)  
+        wallpaper_frame.pack(fill="both", expand=True, padx=10, pady=10)
           
         current_wp = self.config.get("wallpaper_path", "None")  
         self.wp_label = tk.Label(wallpaper_frame,   

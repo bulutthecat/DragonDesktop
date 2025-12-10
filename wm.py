@@ -185,27 +185,31 @@ class WindowManager:
         except Exception as e:  
             print(f"ClientMessage Error: {e}")  
   
-    def send_configure_notify(self, zwin):  
-        """Send synthetic ConfigureNotify (ICCCM requirement)"""  
-        try:  
-            geom = zwin.client.get_geometry()  
-            frame_geom = zwin.frame.get_geometry()  
-              
-            ev = event.ConfigureNotify(  
-                event=zwin.client,  
-                window=zwin.client,  
-                x=frame_geom.x,  
-                y=frame_geom.y + 25,  # Account for title bar  
-                width=geom.width,  
-                height=geom.height,  
-                border_width=0,  
-                above_sibling=X.NONE,  
-                override_redirect=False  
-            )  
-            zwin.client.send_event(ev, event_mask=X.StructureNotifyMask)  
-            self.d.sync()  
-        except Exception as e:  
-            print(f"ConfigureNotify Error: {e}")  
+    def send_configure_notify(self, zwin):
+            """Send synthetic ConfigureNotify (ICCCM requirement)"""
+            try:
+                geom = zwin.client.get_geometry()
+                frame_geom = zwin.frame.get_geometry()
+                
+                # Ensure all values are Integers
+                ev = event.ConfigureNotify(
+                    event=zwin.client,
+                    window=zwin.client,
+                    x=int(frame_geom.x),
+                    y=int(frame_geom.y + 25),
+                    width=int(geom.width),
+                    height=int(geom.height),
+                    border_width=0,
+                    above_sibling=X.NONE,
+                    override_redirect=0  # Use integer 0 instead of False
+                )
+                
+                zwin.client.send_event(ev, event_mask=X.StructureNotifyMask)
+                self.d.sync()
+                
+            except Exception as e:
+                # If it fails, print but DO NOT CRASH the WM
+                print(f"ConfigureNotify Warning: {e}")
   
     def get_fullscreen_window(self):  
         for win in self.windows.values():  
@@ -267,68 +271,72 @@ class WindowManager:
                 traceback.print_exc()  
   
     def handle_configure_request(self, event):  
-        """  
-        CRITICAL: Apps request size/position changes.  
-        Must respond or app will hang/break.  
-        """  
-        window = event.window  
-          
-        # Check if this is one of our managed windows  
-        zwin = None  
-        for win in self.windows.values():  
-            if win.client.id == window.id:  
-                zwin = win  
-                break  
-          
-        if zwin:  
-            # Update world coordinates if app requests it  
-            if event.value_mask & X.CWX:  
-                zwin.world_x = event.x  
-            if event.value_mask & X.CWY:  
-                zwin.world_y = event.y  
-            if event.value_mask & X.CWWidth:  
-                zwin.world_w = max(event.width, zwin.min_w)  
-            if event.value_mask & X.CWHeight:  
-                zwin.world_h = max(event.height, zwin.min_h)  
+            """  
+            CRITICAL: Apps request size/position changes.
+            Must respond or app will hang/break.  
+            """  
+            window = event.window  
               
-            # Re-render  
-            self.renderer.render_world(self.camera, self.windows)  
-              
-            # Send synthetic ConfigureNotify (ICCCM requirement)  
-            self.send_configure_notify(zwin)  
-        else:  
-            # Unmanaged window - grant request directly  
-            try:  
-                window.configure(  
-                    x=event.x if event.value_mask & X.CWX else None,  
-                    y=event.y if event.value_mask & X.CWY else None,  
-                    width=event.width if event.value_mask & X.CWWidth else None,  
-                    height=event.height if event.value_mask & X.CWHeight else None,  
-                    border_width=event.border_width if event.value_mask & X.CWBorderWidth else None,  
-                    stack_mode=event.stack_mode if event.value_mask & X.CWStackMode else None  
-                )  
-            except Exception as e:  
-                print(f"Configure unmanaged window error: {e}")  
+            # Check if this is one of our managed windows  
+            zwin = None  
+            for win in self.windows.values():  
+                if win.client.id == window.id:  
+                    zwin = win  
+                    break  
+                
+            if zwin:  
+                # Update world coordinates if app requests it  
+                if event.value_mask & X.CWX:  
+                    zwin.world_x = int(event.x)  # Force Int
+                if event.value_mask & X.CWY:  
+                    zwin.world_y = int(event.y)  # Force Int
+                if event.value_mask & X.CWWidth:  
+                    zwin.world_w = max(int(event.width), zwin.min_w)  
+                if event.value_mask & X.CWHeight:  
+                    zwin.world_h = max(int(event.height), zwin.min_h)  
+                  
+                # Re-render  
+                self.renderer.render_world(self.camera, self.windows)  
+                  
+                # Send synthetic ConfigureNotify (ICCCM requirement)  
+                self.send_configure_notify(zwin)  
+            else:  
+                # Unmanaged window - grant request directly  
+                try:  
+                    # Prepare configuration arguments cleanly
+                    args = {}
+                    if event.value_mask & X.CWX: args['x'] = int(event.x)
+                    if event.value_mask & X.CWY: args['y'] = int(event.y)
+                    if event.value_mask & X.CWWidth: args['width'] = int(event.width)
+                    if event.value_mask & X.CWHeight: args['height'] = int(event.height)
+                    if event.value_mask & X.CWBorderWidth: args['border_width'] = int(event.border_width)
+                    if event.value_mask & X.CWStackMode: args['stack_mode'] = int(event.stack_mode)
+                    
+                    window.configure(**args)
+                except Exception as e:  
+                    print(f"Configure unmanaged window error: {e}")
   
     def handle_unmap_notify(self, event):  
-        """Window unmaps itself (minimize, hide, etc)"""  
-        window_id = event.window.id  
-          
-        # Find and remove the window  
-        target_zwin = None  
-        for zwin in list(self.windows.values()):  
-            if zwin.client.id == window_id:  
-                target_zwin = zwin  
-                break  
-          
-        if target_zwin:  
-            print(f"Window {window_id} unmapped itself")  
-            # Don't destroy, just hide  
-            try:  
-                target_zwin.frame.unmap()  
-            except:  
-                pass  
-            self.renderer.render_world(self.camera, self.windows)  
+            """Window unmaps itself (minimize, hide, etc)"""  
+            window_id = event.window.id  
+              
+            # Find and remove the window  
+            target_zwin = None  
+            for zwin in list(self.windows.values()):  
+                if zwin.client.id == window_id:  
+                    target_zwin = zwin  
+                    break  
+                
+            if target_zwin:  
+                print(f"Window {window_id} unmapped itself")  
+                # Don't destroy, just hide  
+                try:  
+                    # Check if the frame is actually valid before unmapping
+                    target_zwin.frame.unmap()  
+                except Exception as e:
+                    # Ignore errors if the window is already gone
+                    pass  
+                self.renderer.render_world(self.camera, self.windows)
   
     def handle_destroy_notify(self, event):  
         """Window destroyed (app closed)"""  
@@ -633,15 +641,21 @@ class WindowManager:
         self.renderer.render_world(self.camera, self.windows)  
         self.send_configure_notify(zwin)  
   
-    def zoom_camera(self, direction):  
-        self.camera.zoom += (0.1 * direction)  
-        self.camera.zoom = max(0.11, min(self.camera.zoom, 5.0))  
-        print(f"Zoom: {self.camera.zoom:.2f}")  
-        self.renderer.render_world(self.camera, self.windows)  
-          
-        # Send ConfigureNotify to all windows  
-        for zwin in self.windows.values():  
-            self.send_configure_notify(zwin)  
+    def zoom_camera(self, direction):
+            # 1. Update Zoom
+            self.camera.zoom += (0.1 * direction)
+
+            # Clamp zoom (using the range from your old code which allowed up to 5.0)
+            self.camera.zoom = max(0.11, min(self.camera.zoom, 5.0))
+            print(f"Zoom: {self.camera.zoom:.2f}")
+
+            # 2. Render the world
+            # This moves the windows. X11 automatically sends ConfigureNotify 
+            # to apps when their physical window is moved/resized by the renderer.
+            try:
+                self.renderer.render_world(self.camera, self.windows)
+            except Exception as e:
+                print(f"Renderer Error: {e}")
   
     def get_window_by_frame(self, frame_id):  
         return self.windows.get(frame_id)  
