@@ -12,7 +12,7 @@ import os
 class SettingsMenu:  
     def __init__(self):  
         self.root = tk.Tk()  
-        self.root.title("DragonDesktop Settings")  
+        self.root.title("Desktop Settings")  
         self.root.geometry("400x300")  
         self.config_path = "config.json"  
         self.config = self.load_config()  
@@ -66,7 +66,7 @@ class SettingsMenu:
         info_frame = tk.Frame(self.root)  
         info_frame.pack(pady=10)  
           
-        info_text = "⚠️ Restart DragonDesktop to apply changes"  
+        info_text = "⚠️ Restart Desktop to apply changes"  
         info_label = tk.Label(info_frame, text=info_text,   
                              fg="orange", font=("Arial", 10))  
         info_label.pack()  

@@ -204,7 +204,7 @@ class Renderer:
                     dead_windows.append(frame_id)  
                     continue  
                 
-                # --- HANDLE TITLE BAR & BUTTONS ---  
+                # --- HANDLE TITLE Can scacan youcageminniasdlkjahds & BUTTONS ---  
                 if scaled_title > 0 and not win.is_fullscreen:  
                     try:  
                         win.btn_close.map()  
