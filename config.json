@@ -1,6 +1,9 @@
-{
-    "wallpaper_path": "/home/bulut/Downloads/marc-olivier-jodoin-MJv31qXqSOU-unsplash.jpg",
-    "aliases": {
-        "settings": "python3 settings_menu.py"
-    }
-}
+{  
+  "wallpaper_path": "/home/bulut/Downloads/olga-schraven-yEJ37R74dMo-unsplash.jpg",  
+  "use_picom": true,  
+  "picom_config": "~/.config/picom/picom.conf",  
+  "aliases": {  
+    "settings": "python3 settings_menu.py",  
+    "term": "alacritty"
+  }  
+}  

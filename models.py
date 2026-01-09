@@ -41,3 +41,4 @@ class ZWindow:
         # FIX #3: Dialog/Transient window support  
         self.is_dialog = False  # Is this a transient/dialog window?  
         self.transient_for = None  # Parent window if this is a dialog  
+        self.hidden_by_zoom = False # Prevent unmap request if we blocked the window due to ZUI scale

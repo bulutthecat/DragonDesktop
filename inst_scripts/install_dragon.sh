@@ -41,7 +41,9 @@ apt install -y \
     rofi \
     calc \
     fonts-font-awesome \
-    jq 
+    jq \
+    alacritty \
+    picom
 
 # Note: 'pywal' is best installed via pip to get the latest version, 
 # but apt is fine if the package exists in your distro. 

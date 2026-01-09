@@ -60,6 +60,15 @@ class WindowManager:
         self._setup_grabs()  
         print("DragonDesktop Running with Full X11 Protocol Support...")  
   
+    def print_status(self):  
+        """Print current WM status (for debugging)"""  
+        print("\n=== DragonDesktop Status ===")  
+        print(f"Rendering Mode: {self.renderer.get_mode_string()}")  
+        print(f"Camera: x={self.camera.x}, y={self.camera.y}, zoom={self.camera.zoom:.2f}")  
+        print(f"Windows: {len(self.windows)}")  
+        print(f"Focused: {self.focused_window.title if self.focused_window else 'None'}")  
+        print("============================\n")  
+
     def _setup_ewmh(self):  
         """Minimal EWMH support to prevent app confusion"""  
         try:  
@@ -369,32 +378,37 @@ class WindowManager:
                 self.d.sync()  
             except Exception as e:  
                 print(f"Configure unmanaged window error: {e}")  
-  
     def handle_unmap_notify(self, event):  
-        """Window unmaps itself (minimize, hide, etc)"""  
-        window_id = event.window.id  
-          
-        # FIX #1: Look up by client ID  
-        zwin = self.windows.get(window_id)  
-          
-        if zwin:  
-            print(f"Window {window_id} unmapped itself")  
-            # FIX #7: Track map state  
-            zwin.mapped = False  
+            """Window unmaps itself (minimize, hide, etc)"""  
+            window_id = event.window.id  
               
-            # Hide frame  
-            try:  
-                zwin.frame.unmap()  
-            except:  
-                pass  
+            # FIX #1: Look up by client ID  
+            zwin = self.windows.get(window_id)  
               
-            # Update focus if this was focused  
-            if self.focused_window == zwin:  
-                self.focused_window = None  
-              
-            self._update_client_list()  
-            self.renderer.render_world(self.camera, self.windows)  
-  
+            if zwin:  
+                # [FIX] Ignore unmaps caused by our own zoom engine
+                if hasattr(zwin, 'hidden_by_zoom') and zwin.hidden_by_zoom:
+                    # The renderer hid this window for performance/zoom scaling.
+                    # Do NOT mark it as unmapped, do NOT destroy the frame.
+                    return
+    
+                print(f"Window {window_id} unmapped itself")  
+                # FIX #7: Track map state  
+                zwin.mapped = False  
+                  
+                # Hide frame  
+                try:  
+                    zwin.frame.unmap()  
+                except:  
+                    pass  
+                
+                # Update focus if this was focused  
+                if self.focused_window == zwin:  
+                    self.focused_window = None  
+                  
+                self._update_client_list()  
+                self.renderer.render_world(self.camera, self.windows)
+    
     def handle_destroy_notify(self, event):  
         """Window destroyed (app closed)"""  
         destroyed_window_id = event.window.id  
