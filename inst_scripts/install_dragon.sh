@@ -102,15 +102,15 @@ echo ">>> Polybar themes installed successfully."
 
 
 # 5. Create Startup Wrapper
-WRAPPER_PATH="/usr/local/bin/"
+WRAPPER_PATH="/usr/local/bin/start-dragon.sh"
 echo ">>> Creating startup wrapper at $WRAPPER_PATH"
 
 # Note: In the wrapper below, we updated the Polybar launch command
-wget -P $WRAPPER_PATH https://github.com/bulutthecat/DragonDesktop/releases/download/InfDev/start-dragon.sh
+wget -O "$WRAPPER_PATH" https://github.com/bulutthecat/DragonDesktop/releases/download/InfDev/start-dragon.sh
 
-chmod +x $WRAPPER_PATH/start-dragon.sh
+chmod +x $WRAPPER_PATH
 
-# 6. Register XSessionge
+# 6. Register XSession
 SESSION_FILE="/usr/share/xsessions/dragon.desktop"
 echo ">>> Registering Desktop Session at $SESSION_FILE"
 
