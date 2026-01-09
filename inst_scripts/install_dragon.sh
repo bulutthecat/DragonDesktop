@@ -41,7 +41,10 @@ apt install -y \
     rofi \
     calc \
     fonts-font-awesome \
-    jq 
+    jq \
+    alacritty \
+    picom \
+    feh
 
 # Note: 'pywal' is best installed via pip to get the latest version, 
 # but apt is fine if the package exists in your distro. 
@@ -101,37 +104,9 @@ echo ">>> Polybar themes installed successfully."
 # 5. Create Startup Wrapper
 WRAPPER_PATH="/usr/local/bin/start-dragon.sh"
 echo ">>> Creating startup wrapper at $WRAPPER_PATH"
-
+# Removed old install script setup
 # Note: In the wrapper below, we updated the Polybar launch command
-cat > $WRAPPER_PATH <<EOF
-#!/bin/bash
-
-# Redirect stdout and stderr to a log file in the user's home
-exec > /tmp/dragon-session.log 2>&1
-
-echo "DragonDesktop Session Started: \$(date)"
-
-# Set background color to avoid black screen
-if command -v xsetroot &> /dev/null; then
-    xsetroot -solid "#282A36"
-fi
-
-# 1. Kill existing Polybar instances
-killall -q polybar
-
-# Wait a moment for them to shut down
-while pgrep -u \$UID -x polybar >/dev/null; do sleep 1; done
-
-# 2. Launch Polybar with the installed theme
-# We use 'hack' as requested in your example, but you can change --hack to --forest, --cuts, etc.
-bash \$HOME/.config/polybar/launch.sh --hack &
-
-# 3. Navigate to install dir so Python finds local imports
-cd $INSTALL_DIR
-
-# 4. Start the Window Manager (Unbuffered output)
-/usr/bin/python3 -u main.py
-EOF
+wget -O "$WRAPPER_PATH" https://github.com/bulutthecat/DragonDesktop/releases/download/InfDev/start-dragon.sh
 
 chmod +x $WRAPPER_PATH
 
