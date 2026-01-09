@@ -174,163 +174,43 @@ class Renderer:
             return False  
       
     def _setup_wallpaper(self):  
-        """  
-        Setup wallpaper based on rendering mode  
-        """  
-        path = self.config.get("wallpaper_path", "")  
-        if not path:  
-            return  
-          
-        if self.mode == self.MODE_COMPOSITOR:  
-            self._setup_static_wallpaper_compositor()  
-        else:  
-            self._setup_static_wallpaper_cpu()  
-      
-    def _setup_static_wallpaper_compositor(self):  
-        """  
-        COMPOSITOR MODE: Set wallpaper ONCE, let picom handle it.  
-        This is the critical fix - we don't repaint in render_world.  
-        """  
-        path = self.config.get("wallpaper_path", "")  
-        if not path:  
-            return  
-          
-        try:  
-            img = Image.open(path).convert("RGB")  
-            geom = self.root.get_geometry()  
-            scr_w = geom.width  
-            scr_h = geom.height  
-              
-            print(f"Loading wallpaper (COMPOSITOR mode): {path}")  
-            resized = img.resize((scr_w, scr_h), Image.LANCZOS)  
-              
-            # Upload to pixmap  
+            """  
+            Use 'feh' to handle wallpaper. It sets the necessary X11 atoms  
+            (_XROOTPMAP_ID) so that Picom, Polybar, and others see it correctly.  
+            """  
+            path = self.config.get("wallpaper_path", "")  
+            if not path:  
+                print("⚠ No wallpaper path in config.json")
+                return  
+
+            import os  
+            path = os.path.expanduser(path)
+
+            if not os.path.exists(path):
+                print(f"⚠ Wallpaper file not found: {path}")
+                return
+
             try:  
-                data = resized.tobytes("raw", "BGRX")  
-                bpp = 4  
-            except:  
-                data = resized.tobytes("raw", "RGB")  
-                bpp = 3  
-              
-            self.bg_pixmap = self.root.create_pixmap(scr_w, scr_h, self.depth)  
-            bg_gc = self.bg_pixmap.create_gc()  
-              
-            # Chunked upload to avoid X11 request size limits  
-            bytes_per_row = scr_w * bpp  
-            max_packet_size = 200000  
-            rows_per_chunk = max(1, max_packet_size // bytes_per_row)  
-              
-            current_row = 0  
-            while current_row < scr_h:  
-                chunk_h = min(rows_per_chunk, scr_h - current_row)  
-                start_byte = current_row * bytes_per_row  
-                end_byte = start_byte + (chunk_h * bytes_per_row)  
-                chunk_data = data[start_byte:end_byte]  
-                  
-                self.bg_pixmap.put_image(  
-                    bg_gc,  
-                    0, current_row,  
-                    scr_w, chunk_h,  
-                    X.ZPixmap,  
-                    self.depth,  
-                    0,  
-                    chunk_data  
-                )  
-                current_row += chunk_h  
-              
-            self.bg_width = scr_w  
-            self.bg_height = scr_h  
-              
-            # CRITICAL: Set as root background and STOP  
-            # Picom will composite this, we don't touch it again  
-            self.root.change_attributes(background_pixmap=self.bg_pixmap)  
-            self.root.clear_area()  
-            self.display.flush()  
-              
-            print("✓ Wallpaper set (picom will handle compositing)")  
-              
-        except Exception as e:  
-            print(f"Wallpaper setup error: {e}")  
-            self.bg_pixmap = None  
-      
-    def _setup_static_wallpaper_cpu(self):  
-        """  
-        CPU MODE: Same as before, we'll repaint in render_world  
-        """  
-        path = self.config.get("wallpaper_path", "")  
-        if not path:  
-            return  
-          
-        try:  
-            img = Image.open(path).convert("RGB")  
-            geom = self.root.get_geometry()  
-            scr_w = geom.width  
-            scr_h = geom.height  
-              
-            print(f"Loading wallpaper (CPU mode): {path}")  
-            resized = img.resize((scr_w, scr_h), Image.LANCZOS)  
-              
-            try:  
-                data = resized.tobytes("raw", "BGRX")  
-                bpp = 4  
-            except:  
-                data = resized.tobytes("raw", "RGB")  
-                bpp = 3  
-              
-            self.bg_pixmap = self.root.create_pixmap(scr_w, scr_h, self.depth)  
-            bg_gc = self.bg_pixmap.create_gc()  
-              
-            # Chunked upload  
-            bytes_per_row = scr_w * bpp  
-            max_packet_size = 200000  
-            rows_per_chunk = max(1, max_packet_size // bytes_per_row)  
-              
-            current_row = 0  
-            while current_row < scr_h:  
-                chunk_h = min(rows_per_chunk, scr_h - current_row)  
-                start_byte = current_row * bytes_per_row  
-                end_byte = start_byte + (chunk_h * bytes_per_row)  
-                chunk_data = data[start_byte:end_byte]  
-                  
-                self.bg_pixmap.put_image(  
-                    bg_gc,  
-                    0, current_row,  
-                    scr_w, chunk_h,  
-                    X.ZPixmap,  
-                    self.depth,  
-                    0,  
-                    chunk_data  
-                )  
-                current_row += chunk_h  
-              
-            self.bg_width = scr_w  
-            self.bg_height = scr_h  
-              
-            print("✓ Wallpaper loaded (will repaint each frame)")  
-              
-        except Exception as e:  
-            print(f"Wallpaper setup error: {e}")  
-            self.bg_pixmap = None  
+                # --bg-fill scales the image to fill the screen
+                subprocess.run(["feh", "--bg-fill", path], check=True)  
+
+                # Update internal tracking for CPU mode repaints
+                self.bg_width = self.root.get_geometry().width
+                self.bg_height = self.root.get_geometry().height
+                print(f"✓ Wallpaper set using feh: {path}")  
+
+            except FileNotFoundError:  
+                print("⚠ 'feh' is not installed. Run: sudo apt install feh")  
+            except Exception as e:  
+                print(f"⚠ Failed to set wallpaper: {e}")
       
     def draw_wallpaper_cpu(self):  
-        """  
-        CPU MODE ONLY: Manually repaint wallpaper to prevent trails.  
-        This is NEVER called in compositor mode.  
-        """  
-        if self.bg_pixmap:  
-            try:  
-                # Copy pixmap to root window  
-                self.bg_pixmap.copy_area(  
-                    self.gc, 0, 0, self.bg_width, self.bg_height,  
-                    self.root, 0, 0  
-                )  
-            except:  
-                try:  
-                    self.root.clear_area(0, 0, self.bg_width, self.bg_height, False)  
-                except:  
-                    pass  
-        else:  
-            self.root.clear_area()  
+            """  
+            CPU MODE: Trigger X11 to repaint the background.
+            """  
+            # clear_area with no arguments tells X11: 
+            # "Repaint the whole screen using the defined background tile"
+            self.root.clear_area()
       
     def alloc_color(self, name):  
         try:  

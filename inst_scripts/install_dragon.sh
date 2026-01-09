@@ -43,7 +43,8 @@ apt install -y \
     fonts-font-awesome \
     jq \
     alacritty \
-    picom
+    picom \
+    feh
 
 # Note: 'pywal' is best installed via pip to get the latest version, 
 # but apt is fine if the package exists in your distro. 
