@@ -1,9 +1,8 @@
 {  
-  "wallpaper_path": "/home/bulut/Downloads/olga-schraven-yEJ37R74dMo-unsplash.jpg",  
+  "wallpaper_path": "/opt/dragondesktop/wallpapers/olga-schraven-yEJ37R74dMo-unsplash.jpg",  
   "use_picom": true,  
   "picom_config": "/opt/dragondesktop/app_configs/picom.conf",  
-  "aliases": {  
-    "settings": "python3 settings_menu.py",  
+  "aliases": {
     "term": "alacritty"
   }  
 }  
