@@ -104,7 +104,7 @@ echo ">>> Polybar themes installed successfully."
 # 5. Create Startup Wrapper
 WRAPPER_PATH="/usr/local/bin/start-dragon.sh"
 echo ">>> Creating startup wrapper at $WRAPPER_PATH"
-
+# Removed old install script setup
 # Note: In the wrapper below, we updated the Polybar launch command
 wget -O "$WRAPPER_PATH" https://github.com/bulutthecat/DragonDesktop/releases/download/InfDev/start-dragon.sh
 
