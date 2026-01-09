@@ -203,7 +203,7 @@ class Renderer:
                 print("⚠ 'feh' is not installed. Run: sudo apt install feh")  
             except Exception as e:  
                 print(f"⚠ Failed to set wallpaper: {e}")
-      
+
     def draw_wallpaper_cpu(self):  
             """  
             CPU MODE: Trigger X11 to repaint the background.
