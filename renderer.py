@@ -1,9 +1,9 @@
-from Xlib import X  
-from Xlib import error as XError  
-import hashlib  
-from PIL import Image  
-import sys  
-import subprocess  
+from Xlib import X    
+from Xlib import error as XError    
+import hashlib    
+from PIL import Image    
+import sys    
+import subprocess    
   
 class Renderer:  
     """  
@@ -11,10 +11,9 @@ class Renderer:
     - COMPOSITOR mode: Picom handles painting, we only do layout  
     - CPU mode: We manually paint everything (current behavior)  
     """  
-      
     MODE_CPU = 0  
     MODE_COMPOSITOR = 1  
-      
+  
     def __init__(self, root, display, config):  
         self.root = root  
         self.display = display  
@@ -47,12 +46,11 @@ class Renderer:
         }  
         if self.font:  
             gc_args['font'] = self.font.id  
-          
         self.gc = self.root.create_gc(**gc_args)  
           
         # Auto-detect compositor or start picom  
         self._initialize_compositor()  
-      
+  
     def _initialize_compositor(self):  
         """  
         Strategy:  
@@ -82,7 +80,7 @@ class Renderer:
           
         # Load wallpaper based on mode  
         self._setup_wallpaper()  
-      
+  
     def _detect_compositor(self):  
         """  
         Detect if a compositor is running by checking for  
@@ -92,7 +90,6 @@ class Renderer:
             atom_name = f"_NET_WM_CM_S{self.display.get_default_screen()}"  
             cm_atom = self.display.intern_atom(atom_name)  
             owner = self.display.get_selection_owner(cm_atom)  
-              
             if owner and owner != X.NONE:  
                 # Try to identify which compositor  
                 try:  
@@ -104,13 +101,11 @@ class Renderer:
                         self.compositor_name = "Unknown Compositor"  
                 except:  
                     self.compositor_name = "Unknown Compositor"  
-                  
                 return True  
         except Exception as e:  
             print(f"Compositor detection error: {e}")  
-          
         return False  
-      
+  
     def _start_picom(self, config_path):  
         """  
         Launch picom as a subprocess with proper error handling  
@@ -165,59 +160,56 @@ class Renderer:
                 stderr = self.picom_process.stderr.read().decode('utf-8', errors='ignore')  
                 print(f"⚠ Picom failed to start: {stderr}")  
                 return False  
-                  
         except FileNotFoundError:  
             print("⚠ Picom executable not found. Install with: sudo apt install picom")  
             return False  
         except Exception as e:  
             print(f"⚠ Failed to start picom: {e}")  
             return False  
-      
+  
     def _setup_wallpaper(self):  
-            """  
-            Use 'feh' to handle wallpaper. It sets the necessary X11 atoms  
-            (_XROOTPMAP_ID) so that Picom, Polybar, and others see it correctly.  
-            """  
-            path = self.config.get("wallpaper_path", "")  
-            if not path:  
-                print("⚠ No wallpaper path in config.json")
-                return  
-
-            import os  
-            path = os.path.expanduser(path)
-
-            if not os.path.exists(path):
-                print(f"⚠ Wallpaper file not found: {path}")
-                return
-
-            try:  
-                # --bg-fill scales the image to fill the screen
-                subprocess.run(["feh", "--bg-fill", path], check=True)  
-
-                # Update internal tracking for CPU mode repaints
-                self.bg_width = self.root.get_geometry().width
-                self.bg_height = self.root.get_geometry().height
-                print(f"✓ Wallpaper set using feh: {path}")  
-
-            except FileNotFoundError:  
-                print("⚠ 'feh' is not installed. Run: sudo apt install feh")  
-            except Exception as e:  
-                print(f"⚠ Failed to set wallpaper: {e}")
-
+        """  
+        Use 'feh' to handle wallpaper. It sets the necessary X11 atoms  
+        (_XROOTPMAP_ID) so that Picom, Polybar, and others see it correctly.  
+        """  
+        path = self.config.get("wallpaper_path", "")  
+        if not path:  
+            print("⚠ No wallpaper path in config.json")  
+            return  
+          
+        import os  
+        path = os.path.expanduser(path)  
+          
+        if not os.path.exists(path):  
+            print(f"⚠ Wallpaper file not found: {path}")  
+            return  
+          
+        try:  
+            # --bg-fill scales the image to fill the screen  
+            subprocess.run(["feh", "--bg-fill", path], check=True)  
+            # Update internal tracking for CPU mode repaints  
+            self.bg_width = self.root.get_geometry().width  
+            self.bg_height = self.root.get_geometry().height  
+            print(f"✓ Wallpaper set using feh: {path}")  
+        except FileNotFoundError:  
+            print("⚠ 'feh' is not installed. Run: sudo apt install feh")  
+        except Exception as e:  
+            print(f"⚠ Failed to set wallpaper: {e}")  
+  
     def draw_wallpaper_cpu(self):  
-            """  
-            CPU MODE: Trigger X11 to repaint the background.
-            """  
-            # clear_area with no arguments tells X11: 
-            # "Repaint the whole screen using the defined background tile"
-            self.root.clear_area()
-      
+        """  
+        CPU MODE: Trigger X11 to repaint the background.  
+        """  
+        # clear_area with no arguments tells X11:   
+        # "Repaint the whole screen using the defined background tile"  
+        self.root.clear_area()  
+  
     def alloc_color(self, name):  
         try:  
             return self.colormap.alloc_named_color(name).pixel  
         except:  
             return self.display.screen().white_pixel  
-      
+  
     def get_pixel(self, r, g, b):  
         r = max(0, min(65535, int(r)))  
         g = max(0, min(65535, int(g)))  
@@ -231,7 +223,7 @@ class Renderer:
             return color.pixel  
         except:  
             return self.display.screen().white_pixel  
-      
+  
     def create_theme(self, app_name):  
         if not app_name:  
             app_name = "unknown"  
@@ -246,14 +238,14 @@ class Renderer:
         bar_pixel = self.get_pixel(r16, g16, b16)  
         close_pixel = self.get_pixel(r16 * 0.6, g16 * 0.6, b16 * 0.6)  
         return {'bar': bar_pixel, 'full': full_pixel, 'close': close_pixel}  
-      
+  
     def render_cmd_bar(self, bar_window, text, screen_w, screen_h):  
         bar_window.clear_area()  
         try:  
             bar_window.draw_text(self.gc, 10, 25, text.encode('utf-8'))  
         except:  
             pass  
-      
+  
     def project(self, camera, wx, wy, ww, wh):  
         """  
         Transform world coordinates to screen coordinates.  
@@ -269,7 +261,7 @@ class Renderer:
         sw = max(5, min(sw, 30000))  
         sh = max(5, min(sh, 30000))  
         return sx, sy, sw, sh  
-    
+  
     def render_world(self, camera, windows):  
         """  
         SPLIT ARCHITECTURE:  
@@ -287,7 +279,6 @@ class Renderer:
         - Semantic zoom calculations  
         - Layout logic  
         """  
-          
         # ========================================  
         # PAINTING: Conditional based on mode  
         # ========================================  
@@ -375,24 +366,43 @@ class Renderer:
                     except:  
                         pass  
                   
+                # Draw resize grip (optional visual indicator)  
+                try:  
+                    grip_size = min(scaled_title, 15)  
+                    grip_x = sw - grip_size  
+                    grip_y = sh - grip_size  
+                    # Draw a small colored square in the corner  
+                    grip_color = self.get_pixel(40000, 40000, 40000)  # Dark gray  
+                    self.gc.change(foreground=grip_color)  
+                    win.frame.fill_rectangle(  
+                        self.gc,  
+                        grip_x, grip_y,  
+                        grip_size, grip_size  
+                    )  
+                except:  
+                    pass  
+                  
                 # ---- CLIENT WINDOW CONTENT ----  
                 if show_content:  
                     # High detail: show actual app  
                     try:  
-                        # [FIX] If we previously hid this window for zoom, bring it back now
-                        if hasattr(win, 'hidden_by_zoom') and win.hidden_by_zoom:
-                            win.client.map()
-                            win.hidden_by_zoom = False
-                        
-                        # Fallback map to ensure visibility
+                        # [FIX] If we previously hid this window for zoom, bring it back now  
+                        if hasattr(win, 'hidden_by_zoom') and win.hidden_by_zoom:  
+                            win.client.map()  
+                            win.hidden_by_zoom = False  
+                          
+                        # Fallback map to ensure visibility  
                         win.client.map()  
-
+                          
                         avail_w = sw  
                         avail_h = sh - scaled_title  
+                          
                         scaled_min_w = int(win.min_w * camera.zoom) if win.min_w > 0 else avail_w  
                         scaled_min_h = int(win.min_h * camera.zoom) if win.min_h > 0 else avail_h  
+                          
                         final_w = max(avail_w, scaled_min_w)  
                         final_h = max(avail_h, scaled_min_h)  
+                          
                         off_x = max(0, (avail_w - final_w) // 2)  
                         off_y = max(0, scaled_title + (avail_h - final_h) // 2)  
                           
@@ -409,18 +419,18 @@ class Renderer:
                 else:  
                     # Low detail: show colored placeholder  
                     try:  
-                        # [FIX] Mark this as an internal unmap so the WM ignores the event
-                        if not hasattr(win, 'hidden_by_zoom') or not win.hidden_by_zoom:
-                            win.hidden_by_zoom = True
-                            win.client.unmap()
-
+                        # [FIX] Mark this as an internal unmap so the WM ignores the event  
+                        if not hasattr(win, 'hidden_by_zoom') or not win.hidden_by_zoom:  
+                            win.hidden_by_zoom = True  
+                            win.client.unmap()  
+                          
                         win.frame.clear_area(  
                             x=0, y=0,  
                             width=sw, height=sh  
                         )  
                     except:  
                         pass  
-                          
+              
             except XError.BadWindow:  
                 dead_windows.append(frame_id)  
             except Exception as e:  
@@ -434,8 +444,8 @@ class Renderer:
                 del windows[fid]  
           
         # Flush to X server  
-        self.display.flush()
-      
+        self.display.flush()  
+  
     def toggle_compositor(self):  
         """  
         Runtime toggle between CPU and Compositor modes.  
@@ -466,14 +476,14 @@ class Renderer:
                 except:  
                     pass  
             return True  
-      
+  
     def get_mode_string(self):  
         """Return human-readable mode string"""  
         if self.mode == self.MODE_COMPOSITOR:  
             return f"COMPOSITOR ({self.compositor_name})"  
         else:  
             return "CPU"  
-      
+  
     def cleanup(self):  
         """Cleanup resources on WM exit"""  
         # Don't kill picom on exit (start_new_session=True means it stays alive)  
