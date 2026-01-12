@@ -3,6 +3,8 @@
   "use_picom": true,  
   "picom_config": "/opt/dragondesktop/app_configs/picom.conf",  
   "aliases": {
-    "term": "alacritty"
-  }  
+    "term": "alacritty",
+    "rofi": "rofi -show run",
+    "settings": "xfce4-settings"
+  }
 }  

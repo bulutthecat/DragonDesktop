@@ -9,7 +9,7 @@ class Renderer:
     """  
     Dual-mode renderer:  
     - COMPOSITOR mode: Picom handles painting, we only do layout  
-    - CPU mode: We manually paint everything (current behavior)  
+    - CPU mode: We manually paint everything 
     """  
     MODE_CPU = 0  
     MODE_COMPOSITOR = 1  
