@@ -1,7 +1,7 @@
 #!/bin/bash  
 #  
 # DragonDesktop Session Launcher  
-# Handles Polybar, Picom, and Window Manager startup  
+# Handles Polybar, Picom, Settings Daemons, and Window Manager startup  
 #  
 # Location : /usr/local/bin/start-dragon.sh
 #
@@ -121,8 +121,45 @@ fi
 kill_process polybar 5  
   
 # Kill Picom (we'll restart it fresh)  
-kill_process picom 5  
+kill_process picom 5
+
+# Kill Settings Daemons (Refresh them)
+kill_process xfsettingsd 2
+kill_process xfce4-power-manager 2
   
+# ============================================
+# Start Settings Daemons (XFCE Integration)
+# ============================================
+
+log_info "Starting Settings Daemons..."
+
+# 1. Ensure D-Bus is running (Required for xfconfd to auto-start)
+if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+    log_warn "D-Bus address not set. Attempting to launch dbus-launch..."
+    if check_command dbus-launch; then
+        eval $(dbus-launch --sh-syntax --exit-with-session)
+        log_info "✓ D-Bus session started: $DBUS_SESSION_BUS_ADDRESS"
+    else
+        log_error "✗ dbus-launch not found. Settings daemons may fail."
+    fi
+fi
+
+# 2. Start xfsettingsd (Applies themes, fonts, settings)
+if check_command xfsettingsd; then
+    xfsettingsd --daemon &
+    log_info "✓ xfsettingsd started (Theme/Font daemon)"
+else
+    log_warn "✗ xfsettingsd not found. Themes/Settings will not apply."
+fi
+
+# 3. Start Power Manager (Optional but recommended)
+if check_command xfce4-power-manager; then
+    xfce4-power-manager &
+    log_info "✓ xfce4-power-manager started"
+else
+    log_warn "✗ xfce4-power-manager not found."
+fi
+
 # ============================================  
 # Start Picom (Compositor)  
 # ============================================  
@@ -314,4 +351,4 @@ exec /usr/bin/python3 -u main.py
   
 # If we reach here, exec failed  
 log_error "Failed to start window manager"  
-exit 1  
+exit 1
