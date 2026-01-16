@@ -5,6 +5,6 @@
   "aliases": {
     "term": "alacritty",
     "rofi": "rofi -show run",
-    "settings": "xfce4-settings"
+    "settings": "xfce4-settings-manager"
   }
 }  

@@ -23,23 +23,23 @@ class Renderer:
         self.config = config  
         self.color_cache = {}  
           
-        # Wallpaper resources  
+        
         self.bg_pixmap = None  
         self.bg_width = 0  
         self.bg_height = 0  
           
-        # Compositor state  
+        
         self.mode = self.MODE_CPU  
         self.picom_process = None  
         self.compositor_name = None  
           
-        # Font setup  
+        
         try:  
             self.font = self.display.open_font('fixed')  
         except:  
             self.font = None  
           
-        # Graphics context  
+        
         gc_args = {  
             'foreground': self.alloc_color('black'),  
             'background': self.alloc_color('white')  
@@ -48,7 +48,7 @@ class Renderer:
             gc_args['font'] = self.font.id  
         self.gc = self.root.create_gc(**gc_args)  
           
-        # Auto-detect compositor or start picom  
+        
         self._initialize_compositor()  
   
     def _initialize_compositor(self):  
@@ -62,12 +62,12 @@ class Renderer:
         picom_config = self.config.get("picom_config", "~/.config/picom/picom.conf")  
           
         if use_picom:  
-            # Check if compositor already running  
+            
             if self._detect_compositor():  
                 print(f"✓ Compositor detected: {self.compositor_name}")  
                 self.mode = self.MODE_COMPOSITOR  
             else:  
-                # Try to start picom  
+                
                 if self._start_picom(picom_config):  
                     print("✓ Picom started successfully")  
                     self.mode = self.MODE_COMPOSITOR  
@@ -78,7 +78,7 @@ class Renderer:
             print("✓ CPU rendering mode (picom disabled in config)")  
             self.mode = self.MODE_CPU  
           
-        # Load wallpaper based on mode  
+        
         self._setup_wallpaper()  
   
     def _detect_compositor(self):  
@@ -91,7 +91,7 @@ class Renderer:
             cm_atom = self.display.intern_atom(atom_name)  
             owner = self.display.get_selection_owner(cm_atom)  
             if owner and owner != X.NONE:  
-                # Try to identify which compositor  
+                
                 try:  
                     net_wm_name = self.display.intern_atom('_NET_WM_NAME')  
                     prop = owner.get_full_property(net_wm_name, X.AnyPropertyType)  
@@ -111,14 +111,14 @@ class Renderer:
         Launch picom as a subprocess with proper error handling  
         """  
         try:  
-            # Expand user path  
+            
             import os  
             config_path = os.path.expanduser(config_path)  
               
-            # Build picom command  
+            
             cmd = ["picom"]  
               
-            # Add config if it exists  
+            
             if os.path.exists(config_path):  
                 cmd.extend(["--config", config_path])  
                 print(f"Using picom config: {config_path}")  
@@ -126,29 +126,29 @@ class Renderer:
                 print(f"⚠ Picom config not found: {config_path}")  
                 print("Using picom defaults")  
               
-            # Add some sensible defaults for a WM  
+            
             cmd.extend([  
-                "--backend", "glx",  # GPU-accelerated  
-                "--vsync",           # Prevent tearing  
-                "--no-fading-openclose",  # Faster window operations  
+                "--backend", "glx",  
+                "--vsync",           
+                "--no-fading-openclose",  
                 "--no-fading-destroyed-argb",  
             ])  
               
-            # Start picom  
+            
             self.picom_process = subprocess.Popen(  
                 cmd,  
                 stdout=subprocess.DEVNULL,  
                 stderr=subprocess.PIPE,  
-                start_new_session=True  # Don't kill picom when WM exits  
+                start_new_session=True  
             )  
               
-            # Give picom time to register  
+            
             import time  
             time.sleep(0.5)  
               
-            # Verify it started  
+            
             if self.picom_process.poll() is None:  
-                # Still running, verify compositor selection  
+                
                 if self._detect_compositor():  
                     self.compositor_name = "picom"  
                     return True  
@@ -156,7 +156,7 @@ class Renderer:
                     print("⚠ Picom started but didn't register compositor selection")  
                     return False  
             else:  
-                # Process died  
+                
                 stderr = self.picom_process.stderr.read().decode('utf-8', errors='ignore')  
                 print(f"⚠ Picom failed to start: {stderr}")  
                 return False  
@@ -185,9 +185,9 @@ class Renderer:
             return  
           
         try:  
-            # --bg-fill scales the image to fill the screen  
+            
             subprocess.run(["feh", "--bg-fill", path], check=True)  
-            # Update internal tracking for CPU mode repaints  
+            
             self.bg_width = self.root.get_geometry().width  
             self.bg_height = self.root.get_geometry().height  
             print(f"✓ Wallpaper set using feh: {path}")  
@@ -200,8 +200,8 @@ class Renderer:
         """  
         CPU MODE: Trigger X11 to repaint the background.  
         """  
-        # clear_area with no arguments tells X11:   
-        # "Repaint the whole screen using the defined background tile"  
+        
+        
         self.root.clear_area()  
   
     def alloc_color(self, name):  
@@ -279,27 +279,27 @@ class Renderer:
         - Semantic zoom calculations  
         - Layout logic  
         """  
-        # ========================================  
-        # PAINTING: Conditional based on mode  
-        # ========================================  
+        
+        
+        
         if self.mode == self.MODE_CPU:  
-            # CPU mode: We must repaint wallpaper every frame  
+            
             self.draw_wallpaper_cpu()  
-        # else: Compositor mode - DO NOTHING, picom owns the screen  
+        
           
-        # ========================================  
-        # LAYOUT: Always runs (compositor can't do this)  
-        # ========================================  
+        
+        
+        
         show_content = camera.zoom > 0.5  
         dead_windows = []  
           
         for frame_id, win in windows.items():  
             try:  
-                # Skip unmapped windows  
+                
                 if not win.mapped:  
                     continue  
                   
-                # ---- GEOMETRY CALCULATIONS ----  
+                
                 if win.is_fullscreen:  
                     scaled_title = 0  
                 else:  
@@ -311,7 +311,7 @@ class Renderer:
                     camera, win.world_x, win.world_y, win.world_w, win.world_h  
                 )  
                   
-                # Sanity checks  
+                
                 if sw < 5 or sh < 5:  
                     continue  
                   
@@ -320,7 +320,7 @@ class Renderer:
                     sw = int(win.min_w * camera.zoom)  
                     sh = int(win.min_h * camera.zoom) + scaled_title  
                   
-                # ---- CONFIGURE FRAME (Layout) ----  
+                
                 try:  
                     win.frame.configure(x=sx, y=sy, width=sw, height=sh)  
                     win.frame.map()  
@@ -328,7 +328,7 @@ class Renderer:
                     dead_windows.append(frame_id)  
                     continue  
                   
-                # ---- TITLEBAR & BUTTONS ----  
+                
                 if scaled_title > 0 and not win.is_fullscreen:  
                     try:  
                         win.btn_close.map()  
@@ -348,7 +348,7 @@ class Renderer:
                     except:  
                         pass  
                       
-                    # Draw title text  
+                    
                     text_area_w = sw - (scaled_title * 2)  
                     if text_area_w > 10:  
                         try:  
@@ -359,20 +359,20 @@ class Renderer:
                         except:  
                             pass  
                 else:  
-                    # Hide buttons  
+                    
                     try:  
                         win.btn_close.unmap()  
                         win.btn_full.unmap()  
                     except:  
                         pass  
                   
-                # Draw resize grip (optional visual indicator)  
+                
                 try:  
                     grip_size = min(scaled_title, 15)  
                     grip_x = sw - grip_size  
                     grip_y = sh - grip_size  
-                    # Draw a small colored square in the corner  
-                    grip_color = self.get_pixel(40000, 40000, 40000)  # Dark gray  
+                    
+                    grip_color = self.get_pixel(40000, 40000, 40000)  
                     self.gc.change(foreground=grip_color)  
                     win.frame.fill_rectangle(  
                         self.gc,  
@@ -382,16 +382,16 @@ class Renderer:
                 except:  
                     pass  
                   
-                # ---- CLIENT WINDOW CONTENT ----  
+                
                 if show_content:  
-                    # High detail: show actual app  
+                    
                     try:  
-                        # [FIX] If we previously hid this window for zoom, bring it back now  
+                        
                         if hasattr(win, 'hidden_by_zoom') and win.hidden_by_zoom:  
                             win.client.map()  
                             win.hidden_by_zoom = False  
                           
-                        # Fallback map to ensure visibility  
+                        
                         win.client.map()  
                           
                         avail_w = sw  
@@ -417,9 +417,9 @@ class Renderer:
                     except:  
                         pass  
                 else:  
-                    # Low detail: show colored placeholder  
+                    
                     try:  
-                        # [FIX] Mark this as an internal unmap so the WM ignores the event  
+                        
                         if not hasattr(win, 'hidden_by_zoom') or not win.hidden_by_zoom:  
                             win.hidden_by_zoom = True  
                             win.client.unmap()  
@@ -438,12 +438,12 @@ class Renderer:
                 import traceback  
                 traceback.print_exc()  
           
-        # Cleanup dead windows  
+        
         for fid in dead_windows:  
             if fid in windows:  
                 del windows[fid]  
           
-        # Flush to X server  
+        
         self.display.flush()  
   
     def toggle_compositor(self):  
@@ -452,7 +452,7 @@ class Renderer:
         Useful for debugging or if picom crashes.  
         """  
         if self.mode == self.MODE_CPU:  
-            # Try to enable compositor  
+            
             if self._detect_compositor():  
                 self.mode = self.MODE_COMPOSITOR  
                 print("✓ Switched to COMPOSITOR mode")  
@@ -465,10 +465,10 @@ class Renderer:
                 print("⚠ Failed to enable compositor")  
                 return False  
         else:  
-            # Switch to CPU mode  
+            
             self.mode = self.MODE_CPU  
             print("✓ Switched to CPU mode")  
-            # Optionally kill picom  
+            
             if self.picom_process and self.picom_process.poll() is None:  
                 try:  
                     self.picom_process.terminate()  
@@ -486,6 +486,6 @@ class Renderer:
   
     def cleanup(self):  
         """Cleanup resources on WM exit"""  
-        # Don't kill picom on exit (start_new_session=True means it stays alive)  
-        # This is intentional - picom can serve other apps  
+        
+        
         pass  

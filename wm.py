@@ -17,21 +17,21 @@ class WindowManager:
         self.renderer = Renderer(self.root, self.d, self.config)  
         self.input = InputHandler(self)  
           
-        # KEY FIX #1: Use client window ID as key, not frame ID  
-        self.windows = {}  # client_id -> ZWindow  
-        self.frame_to_client = {}  # frame_id -> client_id (reverse mapping)  
+        
+        self.windows = {}  
+        self.frame_to_client = {}  
         self.btn_map = {}  
         self.cmd_active = False  
         self.cmd_text = ""  
         self.focused_window = None  
           
-        # NEW: Alt-Tab support  
-        self.polybar_windows = []  # Track polybar windows  
-        self.window_stack = []  # Track window stacking order for alt-tab  
-        self.alt_tab_index = 0  # Current position in alt-tab cycle  
-        self.alt_tab_active = False  # Is alt-tab currently active  
+        
+        self.polybar_windows = []  
+        self.window_stack = []  
+        self.alt_tab_index = 0  
+        self.alt_tab_active = False  
           
-        # --- ICCCM Protocol Atoms ---  
+        
         self.WM_PROTOCOLS = self.d.intern_atom('WM_PROTOCOLS')  
         self.WM_DELETE_WINDOW = self.d.intern_atom('WM_DELETE_WINDOW')  
         self.WM_STATE = self.d.intern_atom('WM_STATE')  
@@ -39,19 +39,19 @@ class WindowManager:
         self.WM_TAKE_FOCUS = self.d.intern_atom('WM_TAKE_FOCUS')  
         self.WM_TRANSIENT_FOR = Xatom.WM_TRANSIENT_FOR  
           
-        # --- EWMH Protocol Atoms ---  
-        # FIX: We must list _NET_SUPPORTED so bars know what we can do  
+        
+        
         self._NET_SUPPORTED = self.d.intern_atom('_NET_SUPPORTED')  
         self._NET_WM_STATE = self.d.intern_atom('_NET_WM_STATE')  
         self._NET_WM_STATE_FULLSCREEN = self.d.intern_atom('_NET_WM_STATE_FULLSCREEN')  
         self._NET_ACTIVE_WINDOW = self.d.intern_atom('_NET_ACTIVE_WINDOW')  
         self._NET_CLIENT_LIST = self.d.intern_atom('_NET_CLIENT_LIST')  
         self._NET_SUPPORTING_WM_CHECK = self.d.intern_atom('_NET_SUPPORTING_WM_CHECK')  
-        self._NET_WM_NAME = self.d.intern_atom('_NET_WM_NAME') # Needed for window titles  
+        self._NET_WM_NAME = self.d.intern_atom('_NET_WM_NAME') 
           
         self.cmd_window = self._create_cmd_bar()  
           
-        # --- PROPER ROOT EVENT MASK ---    
+        
         self.root.change_attributes(  
             event_mask=(  
                 X.SubstructureRedirectMask |  
@@ -82,7 +82,7 @@ class WindowManager:
         This fixes the "Disabling module title" error.  
         """  
         try:  
-            # 1. Create the invisible check window (required by spec)  
+            
             self.root.change_property(  
                 self._NET_SUPPORTING_WM_CHECK,  
                 Xatom.WINDOW,  
@@ -90,7 +90,7 @@ class WindowManager:
                 [self.root.id]  
             )  
               
-            # 2. Initialize empty client list  
+            
             self.root.change_property(  
                 self._NET_CLIENT_LIST,  
                 Xatom.WINDOW,  
@@ -98,8 +98,8 @@ class WindowManager:
                 []  
             )  
               
-            # 3. CRITICAL FIX: Advertise supported atoms  
-            # Polybar checks this list. If _NET_ACTIVE_WINDOW isn't here, it disables the title module.  
+            
+            
             supported_atoms = [  
                 self._NET_SUPPORTED,  
                 self._NET_SUPPORTING_WM_CHECK,  
@@ -134,10 +134,10 @@ class WindowManager:
     def unfocus_all(self):  
         """Remove focus from all windows"""  
         try:  
-            # FIX #6: Focus root, not PointerRoot  
+            
             self.d.set_input_focus(self.root, X.RevertToPointerRoot, X.CurrentTime)  
             self.focused_window = None  
-            # Update EWMH  
+            
             try:  
                 self.root.change_property(  
                     self._NET_ACTIVE_WINDOW,  
@@ -154,12 +154,12 @@ class WindowManager:
   
     def focus_window(self, zwin):  
         try:  
-            # FIX #7: Only focus mapped windows  
+            
             if not zwin.mapped:  
                 print(f"Cannot focus unmapped window: {zwin.title}")  
                 return  
               
-            # Send WM_TAKE_FOCUS if supported  
+            
             protocols = self.get_wm_protocols(zwin.client)  
             if self.WM_TAKE_FOCUS in protocols:  
                 self.send_client_message(  
@@ -168,15 +168,15 @@ class WindowManager:
                     [self.WM_TAKE_FOCUS, X.CurrentTime, 0, 0, 0]  
                 )  
               
-            # Always set input focus (FIX #6: on client, not PointerRoot)  
+            
             self.d.set_input_focus(zwin.client, X.RevertToParent, X.CurrentTime)  
             zwin.frame.configure(stack_mode=X.Above)  
             self.focused_window = zwin  
               
-            # NEW: Update window stack for alt-tab  
+            
             self.update_window_stack(zwin)  
               
-            # Update EWMH  
+            
             try:  
                 self.root.change_property(  
                     self._NET_ACTIVE_WINDOW,  
@@ -220,7 +220,7 @@ class WindowManager:
             depth=X.CopyFromParent, visual=X.CopyFromParent,  
             background_pixel=self.renderer.alloc_color('white'),  
             event_mask=X.ExposureMask | X.KeyPressMask,  
-            override_redirect=True  # Don't manage this window  
+            override_redirect=True  
         )  
         win.configure(border_pixel=self.renderer.alloc_color('black'))  
         return win  
@@ -258,29 +258,29 @@ class WindowManager:
         for mask in alt_masks:  
             self.root.grab_key(f4_key, mask, True, X.GrabModeAsync, X.GrabModeAsync)  
           
-        # NEW: Grab Alt+Tab and Alt+Shift+Tab for window switching  
+        
         tab_key = self.d.keysym_to_keycode(XK.string_to_keysym("Tab"))  
         for mask in alt_masks:  
-            # Alt+Tab  
+            
             self.root.grab_key(tab_key, mask, True, X.GrabModeAsync, X.GrabModeAsync)  
-            # Alt+Shift+Tab (reverse)  
+            
             self.root.grab_key(tab_key, mask | X.ShiftMask, True, X.GrabModeAsync, X.GrabModeAsync)  
   
     def is_polybar_window(self, window):  
         """Detect if a window is polybar by checking WM_CLASS and WM_NAME"""  
         try:  
-            # Check WM_CLASS  
+            
             wm_class = window.get_wm_class()  
             if wm_class:  
                 if any("polybar" in c.lower() for c in wm_class):  
                     return True  
               
-            # Check WM_NAME  
+            
             wm_name = window.get_wm_name()  
             if wm_name and "polybar" in wm_name.lower():  
                 return True  
               
-            # Check _NET_WM_NAME (UTF-8 version)  
+            
             try:  
                 prop = window.get_full_property(self._NET_WM_NAME, 0)  
                 if prop and prop.value:  
@@ -301,16 +301,16 @@ class WindowManager:
         if not self.polybar_windows:  
             return  
           
-        # Check if there's a fullscreen window  
+        
         fullscreen_win = self.get_fullscreen_window()  
           
         for polybar_win in self.polybar_windows:  
             try:  
                 if fullscreen_win:  
-                    # Stack polybar below fullscreen window  
+                    
                     polybar_win.configure(stack_mode=X.Below, sibling=fullscreen_win.frame)  
                 else:  
-                    # Stack polybar on top of everything  
+                    
                     polybar_win.configure(stack_mode=X.Above)  
             except Exception as e:  
                 print(f"Polybar stacking error: {e}")  
@@ -322,16 +322,16 @@ class WindowManager:
         Update the window stack for alt-tab cycling.  
         Most recently focused window goes to the front.  
         """  
-        # Remove window if already in stack  
+        
         self.window_stack = [w for w in self.window_stack if w.id != zwin.id]  
-        # Add to front (most recently focused)  
+        
         self.window_stack.insert(0, zwin)  
   
     def handle_alt_tab(self, reverse=False):  
         """  
         Cycle through windows using Alt+Tab (forward) or Alt+Shift+Tab (reverse).  
         """  
-        # Get list of mapped, manageable windows  
+        
         tabbable_windows = [  
             w for w in self.window_stack   
             if w.mapped and w.id in self.windows  
@@ -342,24 +342,24 @@ class WindowManager:
             return  
           
         if not self.alt_tab_active:  
-            # Starting alt-tab cycle  
+            
             self.alt_tab_active = True  
-            self.alt_tab_index = 1  # Start at second window (first is current)  
+            self.alt_tab_index = 1  
         else:  
-            # Continue cycling  
+            
             if reverse:  
                 self.alt_tab_index = (self.alt_tab_index - 1) % len(tabbable_windows)  
             else:  
                 self.alt_tab_index = (self.alt_tab_index + 1) % len(tabbable_windows)  
           
-        # Get the window to focus  
+        
         target_window = tabbable_windows[self.alt_tab_index]  
           
-        # Bring window to front and focus  
+        
         target_window.frame.configure(stack_mode=X.Above)  
         self.focus_window(target_window)  
           
-        # Re-ensure polybar stacking (must stay on top)  
+        
         self.ensure_polybar_stacking()  
           
         print(f"Alt-Tab: Switched to '{target_window.title}' ({self.alt_tab_index + 1}/{len(tabbable_windows)})")  
@@ -371,7 +371,7 @@ class WindowManager:
         if self.alt_tab_active:  
             self.alt_tab_active = False  
             self.alt_tab_index = 0  
-            # Update window stack with newly focused window  
+            
             if self.focused_window:  
                 self.update_window_stack(self.focused_window)  
             print("Alt-Tab: Cycle ended")  
@@ -401,17 +401,17 @@ class WindowManager:
   
     def send_configure_notify(self, zwin):  
         """Send synthetic ConfigureNotify (ICCCM requirement)"""  
-        # FIX #8: Send ABSOLUTE root coordinates, not world coordinates  
+        
         try:  
             geom = zwin.client.get_geometry()  
             frame_geom = zwin.frame.get_geometry()  
-            # Get frame's position relative to root  
+            
             frame_coords = zwin.frame.translate_coords(self.root, 0, 0)  
             ev = event.ConfigureNotify(  
                 event=zwin.client,  
                 window=zwin.client,  
-                x=int(frame_coords.x),  # Absolute X in root  
-                y=int(frame_coords.y + 25),  # Absolute Y in root + titlebar  
+                x=int(frame_coords.x),  
+                y=int(frame_coords.y + 25),  
                 width=int(geom.width),  
                 height=int(geom.height),  
                 border_width=0,  
@@ -433,7 +433,7 @@ class WindowManager:
             focus_reply = self.d.get_input_focus()  
             focus_win = focus_reply.focus  
             if isinstance(focus_win, int) or focus_win == X.NONE: return  
-            # FIX #1: Look up by client ID  
+            
             target_zwin = self.windows.get(focus_win.id)  
             if target_zwin:  
                 self.close_window(target_zwin)  
@@ -446,7 +446,7 @@ class WindowManager:
         while True:  
             try:  
                 event = self.d.next_event()  
-                # --- CORE X11 EVENT HANDLERS ---  
+                
                 if event.type == X.MapRequest:  
                     self.handle_map_request(event.window)  
                 elif event.type == X.ConfigureRequest:  
@@ -460,14 +460,14 @@ class WindowManager:
                 elif event.type == X.ClientMessage:  
                     self.handle_client_message(event)  
                 elif event.type == X.MapNotify:  
-                    pass  # Informational only  
+                    pass  
                 elif event.type == X.ReparentNotify:  
-                    pass  # We caused this  
+                    pass  
                 elif event.type == X.KeyRelease:  
-                    # NEW: Handle key release for Alt-Tab  
+                    
                     self.input.handle_event(event)  
                 else:  
-                    # Pass to input handler  
+                    
                     self.input.handle_event(event)  
             except KeyboardInterrupt:  
                 break  
@@ -482,10 +482,10 @@ class WindowManager:
         Must respond or app will hang/break.  
         """  
         window = event.window  
-        # FIX #1: Look up by client window ID  
+        
         zwin = self.windows.get(window.id)  
         if zwin:  
-            # Update world coordinates if app requests it  
+            
             if event.value_mask & X.CWX:  
                 zwin.world_x = int(event.x)  
             if event.value_mask & X.CWY:  
@@ -494,13 +494,13 @@ class WindowManager:
                 zwin.world_w = max(int(event.width), zwin.min_w)  
             if event.value_mask & X.CWHeight:  
                 zwin.world_h = max(int(event.height), zwin.min_h)  
-            # Re-render  
+            
             self.renderer.render_world(self.camera, self.windows)  
             self.ensure_polybar_stacking()  
-            # Send synthetic ConfigureNotify (ICCCM requirement)  
+            
             self.send_configure_notify(zwin)  
         else:  
-            # Unmanaged window - grant request directly  
+            
             try:  
                 args = {}  
                 if event.value_mask & X.CWX: args['x'] = int(event.x)  
@@ -517,23 +517,23 @@ class WindowManager:
     def handle_unmap_notify(self, event):  
         """Window unmaps itself (minimize, hide, etc)"""  
         window_id = event.window.id  
-        # FIX #1: Look up by client ID  
+        
         zwin = self.windows.get(window_id)  
         if zwin:  
-            # [FIX] Ignore unmaps caused by our own zoom engine  
+            
             if hasattr(zwin, 'hidden_by_zoom') and zwin.hidden_by_zoom:  
-                # The renderer hid this window for performance/zoom scaling.  
-                # Do NOT mark it as unmapped, do NOT destroy the frame.  
+                
+                
                 return  
             print(f"Window {window_id} unmapped itself")  
-            # FIX #7: Track map state  
+            
             zwin.mapped = False  
-            # Hide frame  
+            
             try:  
                 zwin.frame.unmap()  
             except:  
                 pass  
-            # Update focus if this was focused  
+            
             if self.focused_window == zwin:  
                 self.focused_window = None  
             self._update_client_list()  
@@ -543,11 +543,11 @@ class WindowManager:
     def handle_destroy_notify(self, event):  
         """Window destroyed (app closed)"""  
         destroyed_window_id = event.window.id  
-        # FIX #1: Look up by client ID  
+        
         zwin = self.windows.get(destroyed_window_id)  
         if zwin:  
             print(f"Window {destroyed_window_id} destroyed")  
-            # Remove from maps  
+            
             del self.windows[zwin.client.id]  
             if zwin.frame.id in self.frame_to_client:  
                 del self.frame_to_client[zwin.frame.id]  
@@ -555,12 +555,12 @@ class WindowManager:
                 del self.btn_map[zwin.btn_close.id]  
             if zwin.btn_full.id in self.btn_map:  
                 del self.btn_map[zwin.btn_full.id]  
-            # Remove from window stack  
+            
             self.window_stack = [w for w in self.window_stack if w.id != zwin.id]  
-            # Clear focus if needed  
+            
             if self.focused_window == zwin:  
                 self.focused_window = None  
-            # Destroy frame  
+            
             try:  
                 zwin.frame.destroy()  
             except XError.BadWindow:  
@@ -572,11 +572,11 @@ class WindowManager:
     def handle_property_notify(self, event):  
         """Window property changed (title, hints, etc)"""  
         window_id = event.window.id  
-        # FIX #1: Look up by client window ID  
+        
         zwin = self.windows.get(window_id)  
         if not zwin:  
             return  
-        # Update title if WM_NAME changed  
+        
         if event.atom == Xatom.WM_NAME:  
             try:  
                 new_title = zwin.client.get_wm_name() or "Untitled"  
@@ -585,7 +585,7 @@ class WindowManager:
                 self.ensure_polybar_stacking()  
             except:  
                 pass  
-        # Update size hints if WM_NORMAL_HINTS changed  
+        
         elif event.atom == Xatom.WM_NORMAL_HINTS:  
             try:  
                 min_w, min_h, max_w, max_h = self.get_size_hints(zwin.client)  
@@ -595,7 +595,7 @@ class WindowManager:
                 zwin.max_h = max_h  
             except:  
                 pass  
-        # FIX #4: Handle EWMH state changes  
+        
         elif event.atom == self._NET_WM_STATE:  
             try:  
                 prop = zwin.client.get_full_property(self._NET_WM_STATE, Xatom.ATOM)  
@@ -610,23 +610,23 @@ class WindowManager:
     def handle_client_message(self, event):  
         """Handle ICCCM/EWMH client messages"""  
         try:  
-            # FIX #4: Handle EWMH state requests  
+            
             if event.client_type == self._NET_WM_STATE:  
                 window_id = event.window.id  
                 zwin = self.windows.get(window_id)  
                 if zwin:  
-                    # data.data[1] and data.data[2] contain atoms to add/remove  
-                    action = event.data.data[0]  # 0=remove, 1=add, 2=toggle  
+                    
+                    action = event.data.data[0]  
                     prop1 = event.data.data[1]  
                     if prop1 == self._NET_WM_STATE_FULLSCREEN:  
-                        if action == 1 and not zwin.is_fullscreen:  # Add  
+                        if action == 1 and not zwin.is_fullscreen:  
                             self.toggle_fullscreen(zwin)  
-                        elif action == 0 and zwin.is_fullscreen:  # Remove  
+                        elif action == 0 and zwin.is_fullscreen:  
                             self.toggle_fullscreen(zwin)  
-                        elif action == 2:  # Toggle  
+                        elif action == 2:  
                             self.toggle_fullscreen(zwin)  
             elif event.client_type == self.WM_CHANGE_STATE:  
-                # App wants to change state (iconify, etc)  
+                
                 pass  
         except Exception as e:  
             print(f"ClientMessage handler error: {e}")  
@@ -702,35 +702,35 @@ class WindowManager:
             return 0, 0, 32768, 32768  
   
     def handle_map_request(self, window):  
-        # Ignore override_redirect windows  
+        
         try:  
             attrs = window.get_attributes()  
             if attrs.override_redirect:  
-                # NEW: Check if this is polybar  
+                
                 if self.is_polybar_window(window):  
                     self.polybar_windows.append(window)  
                     print(f"✓ Detected polybar window: {window.id}")  
                 window.map()  
-                # Ensure polybar stays on top  
+                
                 self.ensure_polybar_stacking()  
                 return  
         except:  
             return  
           
-        # FIX #1: Check if already managed by CLIENT ID  
+        
         if window.id in self.windows:  
-            # Already managed - just map it  
+            
             zwin = self.windows[window.id]  
             zwin.frame.map()  
             zwin.mapped = True  
             self._update_client_list()  
             return  
           
-        # Don't manage our own windows  
+        
         if window.id in self.btn_map:  
             return  
           
-        # FIX #3: Check for transient windows (dialogs)  
+        
         try:  
             transient_for = window.get_wm_transient_for()  
             is_dialog = transient_for is not None  
@@ -758,7 +758,7 @@ class WindowManager:
           
         theme = self.renderer.create_theme(app_name)  
           
-        # FIX #3: Position dialogs near their parent  
+        
         if is_dialog and transient_for and transient_for.id in self.windows:  
             parent_zwin = self.windows[transient_for.id]  
             world_x = parent_zwin.world_x + 50  
@@ -772,7 +772,7 @@ class WindowManager:
             target_w, target_h + 25  
         )  
           
-        # FIX #9: Remove SubstructureRedirectMask from frame  
+        
         frame = self.root.create_window(  
             sx, sy, sw, sh,  
             border_width=1,  
@@ -780,7 +780,7 @@ class WindowManager:
             visual=X.CopyFromParent,  
             background_pixel=theme['bar'],  
             event_mask=(  
-                X.SubstructureNotifyMask |  # Removed Redirect  
+                X.SubstructureNotifyMask |  
                 X.ButtonPressMask |  
                 X.ButtonReleaseMask |  
                 X.ButtonMotionMask |  
@@ -789,7 +789,7 @@ class WindowManager:
         )  
           
         btn_size = 20  
-        # FIX #9: Buttons only need ButtonPressMask  
+        
         btn_close = frame.create_window(  
             sw - btn_size, 0, btn_size, btn_size,  
             border_width=1, depth=X.CopyFromParent, visual=X.CopyFromParent,  
@@ -804,24 +804,24 @@ class WindowManager:
         )  
           
         zwin = ZWindow(  
-            window.id,  # FIX #1: Use client ID as primary key  
+            window.id,  
             window, frame, btn_close, btn_full,  
             world_x, world_y, target_w, target_h + 25,  
             title=name  
         )  
         zwin.min_w = min_w; zwin.min_h = min_h  
         zwin.max_w = max_w; zwin.max_h = max_h  
-        zwin.mapped = True  # FIX #7: Track map state  
-        zwin.is_dialog = is_dialog  # FIX #3: Track dialog status  
+        zwin.mapped = True  
+        zwin.is_dialog = is_dialog  
         zwin.transient_for = transient_for  
           
-        # FIX #1: Key by client ID, maintain reverse mapping  
+        
         self.windows[window.id] = zwin  
         self.frame_to_client[frame.id] = window.id  
         self.btn_map[btn_close.id] = ('close', zwin)  
         self.btn_map[btn_full.id] = ('maximize', zwin)  
           
-        # Subscribe to client events  
+        
         try:  
             window.change_attributes(  
                 event_mask=(  
@@ -833,45 +833,45 @@ class WindowManager:
         except:  
             pass  
           
-        # Set WM_STATE to Normal  
+        
         try:  
             window.change_property(  
                 self.WM_STATE, self.WM_STATE, 32,  
-                [1, X.NONE]  # NormalState  
+                [1, X.NONE]  
             )  
         except:  
             pass  
           
-        # Reparent  
+        
         window.reparent(frame, 0, 25)  
           
-        # ============================================  
-        # FIX ISSUE #1: PASSIVE GRAB FOR CLICK-TO-FOCUS  
-        # ============================================  
-        # This tells X11: "Intercept ALL left clicks on this client window  
-        # and send them to the WM first, then replay them to the app"  
+        
+        
+        
+        
+        
         try:  
             window.grab_button(  
-                1,                    # Button 1 (Left Click)  
-                X.AnyModifier,        # Catch clicks with any modifier (Shift, Ctrl, etc.)  
-                True,                 # owner_events=True (important!)  
-                X.ButtonPressMask,    # We only care about press, not release  
-                X.GrabModeSync,       # SYNC mode - pointer freezes until we call allow_events  
-                X.GrabModeAsync,      # Keyboard continues working  
-                X.NONE,               # confine_to (no confinement)  
-                X.NONE                # cursor (no cursor change)  
+                1,                    
+                X.AnyModifier,        
+                True,                 
+                X.ButtonPressMask,    
+                X.GrabModeSync,       
+                X.GrabModeAsync,      
+                X.NONE,               
+                X.NONE                
             )  
             print(f"✓ Passive grab set on {name}")  
         except Exception as e:  
             print(f"⚠ Failed to set passive grab on {name}: {e}")  
           
-        # FIX #2: Map frame ONLY, let client map itself  
+        
         frame.map()  
         btn_close.map()  
         btn_full.map()  
-        # DO NOT CALL window.map() - client handles its own mapping  
+        
           
-        # FIX #3: Stack dialogs above parent  
+        
         if is_dialog and transient_for and transient_for.id in self.windows:  
             parent_zwin = self.windows[transient_for.id]  
             frame.configure(stack_mode=X.Above, sibling=parent_zwin.frame)  
@@ -880,12 +880,12 @@ class WindowManager:
         self._update_client_list()  
         self.renderer.render_world(self.camera, self.windows)  
         self.ensure_polybar_stacking()  
-        # Send initial configure notify  
+        
         self.send_configure_notify(zwin)  
   
     def close_window(self, zwin):  
         """Close window using ICCCM protocol"""  
-        # Try graceful close first  
+        
         protocols = self.get_wm_protocols(zwin.client)  
         if self.WM_DELETE_WINDOW in protocols:  
             self.send_client_message(  
@@ -894,12 +894,12 @@ class WindowManager:
                 [self.WM_DELETE_WINDOW, X.CurrentTime, 0, 0, 0]  
             )  
         else:  
-            # Force kill  
+            
             try:  
                 zwin.client.kill_client()  
             except:  
                 pass  
-        # Don't delete immediately - wait for DestroyNotify  
+        
   
     def toggle_fullscreen(self, zwin):  
         screen = self.root.get_geometry()  
@@ -916,7 +916,7 @@ class WindowManager:
             zwin.world_y = int(self.camera.y - (zwin.world_h / 2))  
             zwin.is_fullscreen = True  
           
-        # Update EWMH state  
+        
         try:  
             if zwin.is_fullscreen:  
                 zwin.client.change_property(  
@@ -938,7 +938,7 @@ class WindowManager:
         self.renderer.render_world(self.camera, self.windows)  
         self.send_configure_notify(zwin)  
           
-        # NEW: Re-ensure polybar stacking when toggling fullscreen  
+        
         self.ensure_polybar_stacking()  
   
     def zoom_camera(self, direction):  
@@ -952,7 +952,7 @@ class WindowManager:
             print(f"Renderer Error: {e}")  
   
     def get_window_by_frame(self, frame_id):  
-        # FIX #1: Use reverse mapping  
+        
         client_id = self.frame_to_client.get(frame_id)  
         if client_id:  
             return self.windows.get(client_id)  

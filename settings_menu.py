@@ -1,4 +1,4 @@
-#!/usr/bin/env python3  
+
 """  
 DragonDesktop Settings Menu  
 A simple GUI for changing wallpaper and other settings.  
@@ -38,12 +38,12 @@ class SettingsMenu:
             return False  
       
     def setup_ui(self):  
-        # Title  
+        
         title = tk.Label(self.root, text="DragonDesktop Settings",   
                         font=("Arial", 16, "bold"), pady=10)  
         title.pack()  
           
-        # Wallpaper Section  
+        
         wallpaper_frame = tk.LabelFrame(self.root, text="Wallpaper",   
                                        padx=10, pady=10)  
         wallpaper_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -62,7 +62,7 @@ class SettingsMenu:
                              command=self.clear_wallpaper)  
         btn_clear.pack(pady=5)  
           
-        # Info Section  
+        
         info_frame = tk.Frame(self.root)  
         info_frame.pack(pady=10)  
           
